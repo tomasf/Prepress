@@ -128,7 +128,7 @@ public extension Geometry3D {
         if !slicerSettings.isEmpty {
             geometry = geometry
                 .modifyingResult(SlicerSettingsEntries.self) { $0.entries.append((part, slicerSettings)) }
-                .postprocessingThreeMF { writer in try writeBambuModelSettingsIfNeeded(using: writer) }
+                .withArchiveFinalizer { archive in try writeBambuModelSettingsIfNeeded(using: archive) }
         }
 
         return geometry.inPart(part)

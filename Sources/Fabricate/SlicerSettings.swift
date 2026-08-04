@@ -906,14 +906,14 @@ struct SlicerSettingsEntries: ResultElement {
 /// anywhere in the tree, once per export. Safe to call redundantly — from `asComponent` on every
 /// component that declares settings — since it checks `fileExists` before writing: whichever
 /// registration runs first does the actual write, the rest see the file already there and no-op.
-func writeBambuModelSettingsIfNeeded(using writer: ThreeMFArchiveWriter) throws {
+func writeBambuModelSettingsIfNeeded(using archive: ModelArchive) throws {
     let path = "Metadata/model_settings.config"
-    guard !writer.fileExists(at: path) else { return }
+    guard !archive.fileExists(at: path) else { return }
 
-    let entries = writer.resultElement(SlicerSettingsEntries.self).entries
-    guard entries.contains(where: { writer.objectID(for: $0.part) != nil }) else { return }
+    let entries = archive.resultElement(SlicerSettingsEntries.self).entries
+    guard entries.contains(where: { archive.objectID(for: $0.part) != nil }) else { return }
 
-    try writer.addFile(at: path, data: bambuModelSettingsConfig(for: entries, objectID: writer.objectID(for:)))
+    try archive.addFile(at: path, data: bambuModelSettingsConfig(for: entries, objectID: archive.objectID(for:)))
 }
 
 /// Builds a Bambu/Orca `model_settings.config` sidecar (per-object `<metadata key="..." value="..."/>`
