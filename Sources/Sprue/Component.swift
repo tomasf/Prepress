@@ -19,8 +19,13 @@ import Cadova
 /// several pieces of geometry with the *same* component instance does merge them, deliberately: that's
 /// how one component is built out of several bodies.
 public struct Component: Sendable {
-    /// The part this component's geometry is emitted into. Deliberately not public — see the note above.
-    internal let part: Part
+    /// The part this component's geometry is emitted into.
+    ///
+    /// Read-only on purpose: it's here so a component can be used with Cadova APIs that take a
+    /// ``Cadova/Part`` (``Cadova/Geometry/detachingPart(_:_:)``, looking geometry up in the part
+    /// catalog, and so on). There's deliberately no way to go the other way and build a component
+    /// around an existing part, which is what keeps two components from ever sharing one.
+    public let part: Part
 
     /// Already collapsed to one value per key, in declaration order.
     internal let slicerSettings: [SlicerSettingKey: String]
