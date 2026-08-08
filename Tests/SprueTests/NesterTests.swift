@@ -123,25 +123,51 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
     // and a nil (plain part) never clobbers a real value.
     #expect(ComponentData().value == nil)
 
-    let inner = ComponentData(.init(upDirection: .up, transform: .identity, quantity: 2))
-    let outer = ComponentData(.init(upDirection: .down, transform: .identity, quantity: 7))
-    #expect(ComponentData(combining: [inner, outer]).value?.quantity == 7)
-    #expect(ComponentData(combining: [inner, ComponentData()]).value?.quantity == 2)
+    let inner = ComponentData(.init(component: Component("Inner", quantity: 2), transform: .identity))
+    let outer = ComponentData(.init(component: Component("Outer", upDirection: .down, quantity: 7), transform: .identity))
+    #expect(ComponentData(combining: [inner, outer]).value?.component.quantity == 7)
+    #expect(ComponentData(combining: [inner, ComponentData()]).value?.component.quantity == 2)
 }
 
-@Test func asComponentOverloadsCompile() {
+@Test func inComponentOverloadsCompile() {
     _ = Box(1)
-        .asComponent(name: "Sideways", upDirection: .right)
+        .inComponent(name: "Sideways", upDirection: .right)
     _ = Box(1)
-        .asComponent(name: "Many", quantity: 3)
+        .inComponent(name: "Many", quantity: 3)
     _ = Box(1)
-        .asComponent(Part("Custom"), upDirection: .forward)
+        .inComponent(Component("Custom", upDirection: .forward))
     _ = Box(1)
-        .asComponent(Part("Repeated"), quantity: 2)
+        .inComponent(Component("Repeated", quantity: 2))
+    _ = Box(1)
+        .inComponent(Component("Metallic", material: .init(baseColor: .red, metallicness: 1, roughness: 0.2)))
+
+    // The same component marks several bodies, which merge into one part — the reason Component is a
+    // value you can hold onto rather than something inComponent always creates internally.
+    let shared = Component("Shared")
+    _ = Box(1)
+        .inComponent(shared)
+        .adding {
+            Box(2).translated(x: 5).inComponent(shared)
+        }
+}
+
+@Test func eachComponentOwnsADistinctPart() {
+    // Two components with the same name are still distinct parts, matching Cadova's Part semantics —
+    // and since a Component builds its Part privately, two components can never share one and collapse
+    // into a single object in the output.
+    #expect(Component("Same").part != Component("Same").part)
+
+    let reused = Component("Reused")
+    #expect(reused.part == reused.part)
+    #expect(reused.name == "Reused")
+
+    // Quantity is clamped on the way in, so the packer never sees a nonsensical count.
+    #expect(Component("None", quantity: 0).quantity == 1)
+    #expect(Component("Negative", quantity: -3).quantity == 1)
 }
 
 @Test func platterOrientsComponentWithNestedPart() async throws {
-    let mainPart = Part("Main")
+    let main = Component("Main", upDirection: .right)
     let nestedPart = Part("Nested")
     let capture = BoundsCapture()
 
@@ -153,12 +179,12 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
             Box(2)
                 .inPart(nestedPart)
         }
-        .asComponent(mainPart, upDirection: .right)
+        .inComponent(main)
         .rotated(x: 90°)
         .onPlatter(separatingParts: false)
         .evaluating { geometry, evaluator in
             let parts = await evaluator.parts(of: geometry)
-            capture.bounds = await evaluator.bounds(of: parts[mainPart]!)
+            capture.bounds = await evaluator.bounds(of: parts[main.part]!)
             return geometry
         }
 
@@ -194,8 +220,8 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
 }
 
 @Test func nestedComponentIsPackedWithItsOwnUpDirection() async throws {
-    let outerPart = Part("Outer")
-    let nestedPart = Part("Nested")
+    let outer = Component("Outer", upDirection: .up)
+    let nested = Component("Nested", upDirection: .up)
     let capture = BoundsCapture()
 
     // A component nested inside another component is packed on its own, oriented by its own declared up
@@ -203,15 +229,15 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
     let platter = Box(x: 10, y: 10, z: 10)
         .adding {
             Box(x: 8, y: 2, z: 5)
-                .asComponent(nestedPart, upDirection: .up)
+                .inComponent(nested)
         }
-        .asComponent(outerPart, upDirection: .up)
+        .inComponent(outer)
         .rotated(x: 90°)
         .onPlatter(separatingParts: false)
         .withPackingRotationCount(1)
         .evaluating { geometry, evaluator in
             let parts = await evaluator.parts(of: geometry)
-            capture.bounds = await evaluator.bounds(of: parts[nestedPart]!)
+            capture.bounds = await evaluator.bounds(of: parts[nested.part]!)
             return geometry
         }
 
@@ -223,7 +249,7 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
 }
 
 @Test func platterDoesNotMirrorPartAcrossDeclaredUpDirection() async throws {
-    let part = Part("Asymmetric")
+    let component = Component("Asymmetric", upDirection: .up)
     let capture = BoundsCapture()
 
     let platter = Box(x: 10, y: 10, z: 10)
@@ -233,13 +259,13 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
                 .aligned(at: .minX, .minZ)
                 .translated(x: 4.5, z: 10)
         }
-        .asComponent(part, upDirection: .up)
+        .inComponent(component)
         .rotated(x: 90°)
         .onPlatter(separatingParts: false)
         .withPackingRotationCount(1)
         .evaluating { geometry, evaluator in
             let parts = await evaluator.parts(of: geometry)
-            let partGeometry = parts[part]!
+            let partGeometry = parts[component.part]!
             let bounds = await evaluator.bounds(of: partGeometry)!
             capture.bounds = bounds
             var bottomHits = 0
@@ -337,17 +363,17 @@ private final class BoundsCapture: @unchecked Sendable {
     // separately-resolved orientation, the disc was packed as if standing on edge (a narrow footprint)
     // but laid flat when placed — so the flat disc spilled over its neighbor. The two solid parts must
     // not intersect after packing.
-    let disc = Part("Disc")
-    let block = Part("Block")
+    let disc = Component("Disc", upDirection: .up)
+    let block = Component("Block", upDirection: .up)
     let capture = BoundsCapture()
 
     let platter = Cylinder(diameter: 120, height: 50)
-        .asComponent(disc, upDirection: .up)
+        .inComponent(disc)
         .adding {
             Box(x: 40, y: 16, z: 30)
                 .aligned(at: .centerX)
                 .translated(y: 9)
-                .asComponent(block, upDirection: .up)
+                .inComponent(block)
                 .translated(z: 80)
         }
         .translated(y: -20, z: -40)
@@ -357,8 +383,8 @@ private final class BoundsCapture: @unchecked Sendable {
         .withPackingMargin(2)
         .evaluating { geometry, evaluator in
             let parts = await evaluator.parts(of: geometry)
-            let discGeometry = parts[disc]!
-            let blockGeometry = parts[block]!
+            let discGeometry = parts[disc.part]!
+            let blockGeometry = parts[block.part]!
             capture.partsOverlap = !(await evaluator.isEmpty(discGeometry.intersecting(blockGeometry)))
             return geometry
         }
@@ -409,7 +435,7 @@ private final class BoundsCapture: @unchecked Sendable {
 }
 
 @Test func bambuModelSettingsConfigMergesMultipleEntriesResolvingToTheSameID() throws {
-    // Regression: asComponent's own declaration and onPlatter's re-declaration against the final
+    // Regression: inComponent's own declaration and onPlatter's re-declaration against the final
     // packed part both resolve to the same id whenever packing didn't rename or copy the part (the
     // common quantity == 1, removingMaterials == false case) — this must produce one merged <object>
     // block, not two duplicate ones.
@@ -525,9 +551,9 @@ private final class BoundsCapture: @unchecked Sendable {
 @Test func onPlatterEmbedsModelSettingsConfigForComponentsWithSlicerSettings() async throws {
     // End-to-end: a component declared with slicerSettings must cause onPlatter() to embed a
     // Metadata/model_settings.config sidecar in the exported 3MF archive.
-    let part = Part("Configured")
+    let component = Component("Configured", upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
     let platter = Box(10)
-        .asComponent(part, upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
+        .inComponent(component)
         .onPlatter()
 
     let data = try await ModelFileGenerator.build { platter }.data()
@@ -539,21 +565,20 @@ private final class BoundsCapture: @unchecked Sendable {
 
 @Test func onPlatterOmitsModelSettingsConfigWithoutSlicerSettings() async throws {
     // No component declared slicerSettings, so no sidecar file should be added at all.
-    let part = Part("Plain")
+    let component = Component("Plain", upDirection: .up)
     let platter = Box(10)
-        .asComponent(part, upDirection: .up)
+        .inComponent(component)
         .onPlatter()
 
     let data = try await ModelFileGenerator.build { platter }.data()
     #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) == nil)
 }
 
-@Test func asComponentEmbedsModelSettingsConfigWithoutOnPlatter() async throws {
-    // slicerSettings must not require onPlatter() — a bare asComponent, exported directly, should
-    // still embed the sidecar (asComponent's own part is never renamed/copied without packing, so it
+@Test func inComponentEmbedsModelSettingsConfigWithoutOnPlatter() async throws {
+    // slicerSettings must not require onPlatter() — a bare inComponent, exported directly, should
+    // still embed the sidecar (inComponent's own part is never renamed/copied without packing, so it
     // resolves to a real object id on its own).
-    let part = Part("Standalone")
-    let component = Box(10).asComponent(part, upDirection: .up, slicerSettings: [.wallLoops(3)])
+    let component = Box(10).inComponent(Component("Standalone", upDirection: .up, slicerSettings: [.wallLoops(3)]))
 
     let data = try await ModelFileGenerator.build { component }.data()
     #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) != nil)
@@ -563,13 +588,13 @@ private final class BoundsCapture: @unchecked Sendable {
     // Every component with slicerSettings registers its own postprocessing handler independently.
     // With two components in the same export, both handlers run — this must not throw (a naive
     // "just always addFile" implementation would throw ZipError.duplicateFileEntry on the second one).
-    let a = Part("A")
-    let b = Part("B")
+    let a = Component("A", upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
+    let b = Component("B", upDirection: .up, slicerSettings: [.sparseInfillDensity(80)])
     let assembly = Box(10)
-        .asComponent(a, upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
+        .inComponent(a)
         .adding {
             Box(5)
-                .asComponent(b, upDirection: .up, slicerSettings: [.sparseInfillDensity(80)])
+                .inComponent(b)
         }
 
     let data = try await ModelFileGenerator.build { assembly }.data()

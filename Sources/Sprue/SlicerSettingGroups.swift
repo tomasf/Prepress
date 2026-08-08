@@ -5,7 +5,7 @@ import Foundation
 // `SlicerSetting` carrying several key/value pairs, so they mix freely with the one-key factories in
 // `SlicerSettings.swift`:
 //
-//     .asComponent(name: "Bracket", slicerSettings: [
+//     .inComponent(name: "Bracket", slicerSettings: [
 //         .sparseInfill(.gyroid, density: 20),
 //         .support(.treeAuto, style: .treeOrganic),
 //         .wallLoops(4),

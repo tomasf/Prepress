@@ -928,7 +928,7 @@ extension SlicerSettingsEntries {
     static let configPath = "Metadata/model_settings.config"
 
     /// Writes the platter's `Metadata/model_settings.config` sidecar from every slicer setting declared
-    /// anywhere in the tree, once per export. Safe to call redundantly — from `asComponent` on every
+    /// anywhere in the tree, once per export. Safe to call redundantly — from `inComponent` on every
     /// component that declares settings — since it checks `fileExists` before writing: whichever
     /// registration runs first does the actual write, the rest see the file already there and no-op.
     static func writeConfigIfNeeded(to archive: ModelArchive) throws {
@@ -944,7 +944,7 @@ extension SlicerSettingsEntries {
     /// entries under `<object id="...">`), keyed by each part's assigned 3MF object id. Parts whose id can't
     /// be resolved (shouldn't happen for parts that were actually packed) are skipped rather than guessed at.
     ///
-    /// Entries are merged per resolved id rather than emitted one block per entry: `asComponent`'s own
+    /// Entries are merged per resolved id rather than emitted one block per entry: `inComponent`'s own
     /// declaration and `onPlatter`'s re-declaration against the final packed part both land in the
     /// accumulator, and resolve to the *same* id whenever packing didn't rename or copy the part (e.g. the
     /// common `quantity == 1`, `removingMaterials == false` case) — without merging, that produces
