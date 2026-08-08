@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "Fabricate",
+    name: "Sprue",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "Fabricate", targets: ["Fabricate"]),
+        .library(name: "Sprue", targets: ["Sprue"]),
         .executable(name: "generator", targets: ["generator"]),
     ],
     dependencies: [
@@ -14,18 +14,18 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "Fabricate",
+            name: "Sprue",
             dependencies: ["Cadova", .product(name: "Nodal", package: "Nodal")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .executableTarget(
             name: "generator",
-            dependencies: ["Fabricate", "Cadova"],
+            dependencies: ["Sprue", "Cadova"],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .testTarget(
-            name: "FabricateTests",
-            dependencies: ["Fabricate", "Cadova"],
+            name: "SprueTests",
+            dependencies: ["Sprue", "Cadova"],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
     ]

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Fabricate
+@testable import Sprue
 
 /// Independent separating-axis overlap test, kept separate from the nester's own NFP math so the tests
 /// don't merely re-assert the production code. Returns true only when the two convex polygons share
@@ -170,7 +170,7 @@ private func isOnOrInside(_ point: Vector2D, _ polygon: ConvexPolygon, epsilon: 
 }
 
 @Test func platterSkipsPartsThatArentComponents() async throws {
-    // A plain part — even one with a Cadova natural up direction — is not a Fabricate component, so the
+    // A plain part — even one with a Cadova natural up direction — is not a Sprue component, so the
     // platter leaves it out rather than dropping it on the bed in an arbitrary orientation.
     let part = Part("Plain")
     let capture = BoundsCapture()
@@ -388,10 +388,8 @@ private final class BoundsCapture: @unchecked Sendable {
 
 @Test func bambuModelSettingsConfigFormatsEntriesAndEscapesValues() throws {
     let part = Part("Widget")
-    let xml = try bambuModelSettingsConfig(
-        for: [(part, [.sparseInfillDensity: "15%", .wallLoops: "A & B <ok>"])],
-        objectID: { _ in 42 }
-    )
+    let xml = try SlicerSettingsEntries([(part, [.sparseInfillDensity: "15%", .wallLoops: "A & B <ok>"])])
+        .configData(objectID: { _ in 42 })
     let string = String(decoding: xml, as: UTF8.self)
 
     #expect(string.contains(#"<object id="42">"#))
@@ -404,7 +402,7 @@ private final class BoundsCapture: @unchecked Sendable {
     // A part the caller can't resolve an id for (shouldn't happen for anything actually packed) is
     // skipped rather than emitting a malformed <object id="..."> entry.
     let part = Part("Orphan")
-    let xml = try bambuModelSettingsConfig(for: [(part, [.wallLoops: "3"])], objectID: { _ in nil })
+    let xml = try SlicerSettingsEntries([(part, [.wallLoops: "3"])]).configData(objectID: { _ in nil })
     let string = String(decoding: xml, as: UTF8.self)
 
     #expect(!string.contains("<object"))
@@ -417,10 +415,8 @@ private final class BoundsCapture: @unchecked Sendable {
     // block, not two duplicate ones.
     let partA = Part("A")
     let partB = Part("B") // a distinct Part instance that still resolves to the same object id as A
-    let xml = try bambuModelSettingsConfig(
-        for: [(partA, [.wallLoops: "3"]), (partB, [.sparseInfillDensity: "20%"])],
-        objectID: { _ in 7 }
-    )
+    let xml = try SlicerSettingsEntries([(partA, [.wallLoops: "3"]), (partB, [.sparseInfillDensity: "20%"])])
+        .configData(objectID: { _ in 7 })
     let string = String(decoding: xml, as: UTF8.self)
 
     #expect(string.components(separatedBy: "<object").count == 2) // one split point == one <object> block
@@ -436,43 +432,94 @@ private final class BoundsCapture: @unchecked Sendable {
     #expect(InfillPattern.zigzag.rawValue == "zigzag")
 
     let part = Part("Widget")
-    let xml = try bambuModelSettingsConfig(
-        for: [(part, [.sparseInfillPattern: InfillPattern.rectilinear.rawValue])],
-        objectID: { _ in 1 }
-    )
+    let xml = try SlicerSettingsEntries([(part, [.sparseInfillPattern: InfillPattern.rectilinear.rawValue])])
+        .configData(objectID: { _ in 1 })
     let string = String(decoding: xml, as: UTF8.self)
     #expect(string.contains(#"key="sparse_infill_pattern" value="zig-zag""#))
 }
 
 @Test func slicerSettingTypedFactoriesProduceExpectedRawValues() {
-    #expect(SlicerSetting.enableSupport(true).value == "1")
-    #expect(SlicerSetting.enableSupport(false).value == "0")
-    #expect(SlicerSetting.wallLoops(3).value == "3")
-    #expect(SlicerSetting.sparseInfillDensity(15).value == "15%")
-    #expect(SlicerSetting.layerHeight(0.2).value == "0.2")
-    #expect(SlicerSetting.seamPosition(.aligned).value == "aligned")
-    #expect(SlicerSetting.brimType(.outerOnly).value == "outer_only")
-    #expect(SlicerSetting.supportStyle(.treeOrganic).value == "tree_organic")
-    #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).value == "rectilinear-grid")
-    #expect(SlicerSetting.wallSequence(.innerOuterInner).value == "inner-outer-inner wall")
-    #expect(SlicerSetting.ironingType(.noIroning).value == "no ironing")
+    #expect(SlicerSetting.enableSupport(true).values == [.enableSupport: "1"])
+    #expect(SlicerSetting.enableSupport(false).values == [.enableSupport: "0"])
+    #expect(SlicerSetting.wallLoops(3).values == [.wallLoops: "3"])
+    #expect(SlicerSetting.sparseInfillDensity(15).values == [.sparseInfillDensity: "15%"])
+    #expect(SlicerSetting.layerHeight(0.2).values == [.layerHeight: "0.2"])
+    #expect(SlicerSetting.seamPosition(.aligned).values == [.seamPosition: "aligned"])
+    #expect(SlicerSetting.brimType(.outerOnly).values == [.brimType: "outer_only"])
+    #expect(SlicerSetting.supportStyle(.treeOrganic).values == [.supportStyle: "tree_organic"])
+    #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).values == [.supportBasePattern: "rectilinear-grid"])
+    #expect(SlicerSetting.wallSequence(.innerOuterInner).values == [.wallSequence: "inner-outer-inner wall"])
+    #expect(SlicerSetting.ironingType(.noIroning).values == [.ironingType: "no ironing"])
 
     // All of these route through the same underlying key, whichever factory is used.
-    #expect(SlicerSetting.enableSupport(true).key == .enableSupport)
-    #expect(SlicerSetting.raw(.enableSupport, "1").key == .enableSupport)
+    #expect(SlicerSetting.raw(.enableSupport, "1").values == [.enableSupport: "1"])
+}
+
+@Test func groupedSlicerSettingsOmitUnspecifiedParameters() {
+    // The defining property of the grouped factories: a parameter left out writes *nothing*, so the
+    // user's own slicer profile default survives. Writing a default of our own choosing here would
+    // silently override settings they never asked us to touch.
+    #expect(SlicerSetting.sparseInfill(.gyroid).values == [.sparseInfillPattern: "gyroid"])
+
+    #expect(SlicerSetting.sparseInfill(.gyroid, density: 20).values == [
+        .sparseInfillPattern: "gyroid",
+        .sparseInfillDensity: "20%",
+    ])
+
+    #expect(SlicerSetting.sparseInfill(.lightning, density: 10, anchor: 2.5, direction: 45).values == [
+        .sparseInfillPattern: "lightning",
+        .sparseInfillDensity: "10%",
+        .sparseInfillAnchor: "2.5",
+        .infillDirection: "45.0",
+    ])
+
+    // A group where every parameter is optional collapses to nothing at all rather than to defaults.
+    #expect(SlicerSetting.flush().values.isEmpty)
+}
+
+@Test func groupedSupportImpliesEnableSupport() {
+    // Regression: support_type without enable_support does nothing in Bambu Studio, so a part would
+    // silently print unsupported. Naming a type has to imply the enable flag.
+    #expect(SlicerSetting.support(.treeAuto).values == [
+        .enableSupport: "1",
+        .supportType: "tree(auto)",
+    ])
+
+    #expect(SlicerSetting.support(.normalAuto, style: .snug, thresholdAngle: 40, onBuildPlateOnly: true).values == [
+        .enableSupport: "1",
+        .supportType: "normal(auto)",
+        .supportStyle: "snug",
+        .supportThresholdAngle: "40",
+        .supportOnBuildPlateOnly: "1",
+    ])
+
+    #expect(SlicerSetting.noSupport.values == [.enableSupport: "0"])
+}
+
+@Test func laterSlicerSettingsOverrideEarlierGroupedOnesPerKey() {
+    // Groups and single-key factories mix in one array; collapsing is per key, last one wins, so a
+    // single setting can refine one value out of a group without discarding the rest of it.
+    let settings: [SlicerSetting] = [
+        .sparseInfill(.gyroid, density: 20, anchor: 2),
+        .sparseInfillDensity(50),
+    ]
+
+    #expect(settings.byKey == [
+        .sparseInfillPattern: "gyroid",
+        .sparseInfillDensity: "50%",
+        .sparseInfillAnchor: "2.0",
+    ])
 }
 
 @Test func forkExtensionFactoriesProduceExpectedRawValues() {
     // OrcaSlicer extension.
-    #expect(SlicerSetting.zContouringEnabled(true).value == "1")
-    #expect(SlicerSetting.zContouringEnabled(true).key == .zContouringEnabled)
-    #expect(SlicerSetting.infillAnchor(50).value == "50.0")
-    #expect(SlicerSetting.topSurfaceExpansionDirection(.outward).value == "outward")
+    #expect(SlicerSetting.zContouringEnabled(true).values == [.zContouringEnabled: "1"])
+    #expect(SlicerSetting.infillAnchor(50).values == [.infillAnchor: "50.0"])
+    #expect(SlicerSetting.topSurfaceExpansionDirection(.outward).values == [.topSurfaceExpansionDirection: "outward"])
 
     // Creality Print extension.
-    #expect(SlicerSetting.supportBasePatternTree(.honeycomb).value == "honeycomb")
-    #expect(SlicerSetting.overhangSpeedClassic(false).value == "0")
-    #expect(SlicerSetting.overhangSpeedClassic(false).key == .overhangSpeedClassic)
+    #expect(SlicerSetting.supportBasePatternTree(.honeycomb).values == [.supportBasePatternTree: "honeycomb"])
+    #expect(SlicerSetting.overhangSpeedClassic(false).values == [.overhangSpeedClassic: "0"])
 }
 
 @Test func onPlatterEmbedsModelSettingsConfigForComponentsWithSlicerSettings() async throws {

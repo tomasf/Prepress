@@ -255,13 +255,29 @@ public enum SlicerSettingKey: String, Sendable {
 
 // MARK: - Setting values
 
-/// A single typed slicer print-setting value, ready to be written into a `model_settings.config`
-/// sidecar. Construct these through the static factory methods below (e.g. `.enableSupport(true)`,
-/// `.sparseInfillDensity(15)`) rather than the memberwise initializer, so each setting's value can
-/// only be constructed with the Swift type Bambu Studio actually expects for that key.
+/// A typed slicer print-setting value, ready to be written into a `model_settings.config` sidecar.
+/// Construct these through the static factory methods below (e.g. `.enableSupport(true)`,
+/// `.sparseInfillDensity(15)`) rather than by hand, so each setting's value can only be constructed
+/// with the Swift type Bambu Studio actually expects for that key.
+///
+/// Most settings are a single key/value pair. The grouped factories in `SlicerSettingGroups.swift`
+/// (e.g. `.sparseInfill(.gyroid, density: 20)`) carry several pairs in one value, which is why this
+/// stores a dictionary rather than a lone pair.
 public struct SlicerSetting: Sendable {
-    let key: SlicerSettingKey
-    let value: String
+    let values: [SlicerSettingKey: String]
+
+    init(_ values: [SlicerSettingKey: String]) {
+        self.values = values
+    }
+
+    init(key: SlicerSettingKey, value: String) {
+        values = [key: value]
+    }
+
+    /// Bambu Studio writes booleans as `1`/`0`, not `true`/`false`.
+    init(key: SlicerSettingKey, value: Bool) {
+        self.init(key: key, value: value ? "1" : "0")
+    }
 }
 
 private extension SlicerSetting {
@@ -325,7 +341,7 @@ public extension SlicerSetting {
 
     /// Whether to use precise Z height, ignoring the printer's layer height rounding.
     static func preciseZHeight(_ value: Bool) -> Self {
-        .init(key: .preciseZHeight, value: value ? "1" : "0")
+        .init(key: .preciseZHeight, value: value)
     }
 
     // MARK: Support & adhesion
@@ -347,7 +363,7 @@ public extension SlicerSetting {
 
     /// Whether support material is generated for this object.
     static func enableSupport(_ value: Bool) -> Self {
-        .init(key: .enableSupport, value: value ? "1" : "0")
+        .init(key: .enableSupport, value: value)
     }
 
     /// Support generation algorithm.
@@ -362,7 +378,7 @@ public extension SlicerSetting {
 
     /// Whether support is only generated where it touches the build plate.
     static func supportOnBuildPlateOnly(_ value: Bool) -> Self {
-        .init(key: .supportOnBuildPlateOnly, value: value ? "1" : "0")
+        .init(key: .supportOnBuildPlateOnly, value: value)
     }
 
     /// The (1-based) extruder used to print support.
@@ -447,7 +463,7 @@ public extension SlicerSetting {
 
     /// Whether to disable support generation under bridges.
     static func bridgeNoSupport(_ value: Bool) -> Self {
-        .init(key: .bridgeNoSupport, value: value ? "1" : "0")
+        .init(key: .bridgeNoSupport, value: value)
     }
 
     /// Maximum bridge length printed without support, in millimeters.
@@ -457,12 +473,12 @@ public extension SlicerSetting {
 
     /// Whether support is only generated for critical (large, unsupported) regions.
     static func supportCriticalRegionsOnly(_ value: Bool) -> Self {
-        .init(key: .supportCriticalRegionsOnly, value: value ? "1" : "0")
+        .init(key: .supportCriticalRegionsOnly, value: value)
     }
 
     /// Whether small overhang areas are excluded from support generation.
     static func supportRemoveSmallOverhang(_ value: Bool) -> Self {
-        .init(key: .supportRemoveSmallOverhang, value: value ? "1" : "0")
+        .init(key: .supportRemoveSmallOverhang, value: value)
     }
 
     /// Extra gap between the object's first layer and support, in millimeters.
@@ -572,7 +588,7 @@ public extension SlicerSetting {
 
     /// Whether sparse infill is combined across multiple layers to reduce print time.
     static func infillCombination(_ value: Bool) -> Self {
-        .init(key: .infillCombination, value: value ? "1" : "0")
+        .init(key: .infillCombination, value: value)
     }
 
     /// Overlap between infill and walls, as a whole-number percentage of the extrusion width.
@@ -604,17 +620,17 @@ public extension SlicerSetting {
 
     /// Whether filament purged before printing this object can be flushed into its own infill.
     static func flushIntoInfill(_ value: Bool) -> Self {
-        .init(key: .flushIntoInfill, value: value ? "1" : "0")
+        .init(key: .flushIntoInfill, value: value)
     }
 
     /// Whether filament purged before printing this object can be flushed into other objects.
     static func flushIntoObjects(_ value: Bool) -> Self {
-        .init(key: .flushIntoObjects, value: value ? "1" : "0")
+        .init(key: .flushIntoObjects, value: value)
     }
 
     /// Whether filament purged before printing this object can be flushed into support.
     static func flushIntoSupport(_ value: Bool) -> Self {
-        .init(key: .flushIntoSupport, value: value ? "1" : "0")
+        .init(key: .flushIntoSupport, value: value)
     }
 
     /// A raw key/value pair, for slicer options not covered by a named case above.
@@ -643,7 +659,7 @@ public extension SlicerSetting {
 
     /// Whether steep overhangs are reworked so they can be printed without support. **OrcaSlicer only.**
     static func makeOverhangPrintable(_ value: Bool) -> Self {
-        .init(key: .makeOverhangPrintable, value: value ? "1" : "0")
+        .init(key: .makeOverhangPrintable, value: value)
     }
 
     /// Flow ratio used for the brim, relative to the normal flow. **OrcaSlicer only.**
@@ -654,7 +670,7 @@ public extension SlicerSetting {
     /// Whether the brim follows the elephant-foot-compensated outline instead of the nominal one.
     /// **OrcaSlicer only.**
     static func brimUseEfcOutline(_ value: Bool) -> Self {
-        .init(key: .brimUseEfcOutline, value: value ? "1" : "0")
+        .init(key: .brimUseEfcOutline, value: value)
     }
 
     /// Overlap fraction, as a whole-number percentage, needed before an overhang triggers support.
@@ -691,7 +707,7 @@ public extension SlicerSetting {
     /// Whether Z-layer contouring ("Z anti-aliasing") is enabled — reduces the height of top-surface
     /// perimeters to more closely match the model's true edge height. **OrcaSlicer only.**
     static func zContouringEnabled(_ value: Bool) -> Self {
-        .init(key: .zContouringEnabled, value: value ? "1" : "0")
+        .init(key: .zContouringEnabled, value: value)
     }
 
     /// Under Z-layer contouring, perimeters sloped less steeply than this angle (in degrees) have
@@ -703,7 +719,7 @@ public extension SlicerSetting {
     /// Whether Z-layer contouring skips alternating its fill direction between layers.
     /// **OrcaSlicer only.**
     static func zContouringDisableAlternatingFillDirection(_ value: Bool) -> Self {
-        .init(key: .zContouringDisableAlternatingFillDirection, value: value ? "1" : "0")
+        .init(key: .zContouringDisableAlternatingFillDirection, value: value)
     }
 
     /// Minimum Z-layer height used by Z-layer contouring, in millimeters. Also controls the slicing
@@ -795,7 +811,7 @@ public extension SlicerSetting {
     /// Whether solid infill direction rotates to align with the model rather than staying fixed.
     /// **OrcaSlicer only.**
     static func alignInfillDirectionToModel(_ value: Bool) -> Self {
-        .init(key: .alignInfillDirectionToModel, value: value ? "1" : "0")
+        .init(key: .alignInfillDirectionToModel, value: value)
     }
 
     /// Inserts solid infill at specific layers. Accepts `"N"` (every Nth layer), `"N#K"` (K consecutive
@@ -864,25 +880,27 @@ public extension SlicerSetting {
     /// Whether organic tree supports are validated and automatically repaired if invalid.
     /// **Creality Print only.**
     static func treeSupportOrganicValidateRepair(_ value: Bool) -> Self {
-        .init(key: .treeSupportOrganicValidateRepair, value: value ? "1" : "0")
+        .init(key: .treeSupportOrganicValidateRepair, value: value)
     }
 
     /// Whether solid infill direction rotates a fixed amount between layers. **Creality Print only.**
     static func rotateSolidInfillDirection(_ value: Bool) -> Self {
-        .init(key: .rotateSolidInfillDirection, value: value ? "1" : "0")
+        .init(key: .rotateSolidInfillDirection, value: value)
     }
 
     /// Whether the classic (pre-Arachne) overhang speed algorithm is used. **Creality Print only.**
     static func overhangSpeedClassic(_ value: Bool) -> Self {
-        .init(key: .overhangSpeedClassic, value: value ? "1" : "0")
+        .init(key: .overhangSpeedClassic, value: value)
     }
 }
 
 internal extension Array where Element == SlicerSetting {
     /// Collapses to one value per key (last one wins on duplicates), matching how the underlying
-    /// `model_settings.config` storage is keyed.
+    /// `model_settings.config` storage is keyed. A later single-key setting therefore overrides the
+    /// same key coming from an earlier grouped one, e.g. `[.sparseInfill(.gyroid, density: 20),
+    /// .sparseInfillDensity(50)]` ends up at 50%.
     var byKey: [SlicerSettingKey: String] {
-        Dictionary(map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
+        reduce(into: [:]) { $0.merge($1.values) { _, new in new } }
     }
 }
 
@@ -894,58 +912,62 @@ internal extension Array where Element == SlicerSetting {
 /// (e.g. the original part behind a quantity>1 component, superseded by its numbered copies) are
 /// simply unresolvable at write time and get filtered out rather than causing an error.
 struct SlicerSettingsEntries: ResultElement {
-    var entries: [(part: Part, settings: [SlicerSettingKey: String])]
+    typealias Entry = (part: Part, settings: [SlicerSettingKey: String])
+
+    var entries: [Entry]
 
     init() { entries = [] }
+    init(_ entries: [Entry]) { self.entries = entries }
     init(combining elements: [SlicerSettingsEntries]) {
         entries = elements.flatMap(\.entries)
     }
 }
 
-/// Writes the platter's `Metadata/model_settings.config` sidecar from every slicer setting declared
-/// anywhere in the tree, once per export. Safe to call redundantly — from `asComponent` on every
-/// component that declares settings — since it checks `fileExists` before writing: whichever
-/// registration runs first does the actual write, the rest see the file already there and no-op.
-func writeBambuModelSettingsIfNeeded(using archive: ModelArchive) throws {
-    let path = "Metadata/model_settings.config"
-    guard !archive.fileExists(at: path) else { return }
+extension SlicerSettingsEntries {
+    /// Location of the sidecar within the 3MF archive.
+    static let configPath = "Metadata/model_settings.config"
 
-    let entries = archive.resultElement(SlicerSettingsEntries.self).entries
-    guard entries.contains(where: { archive.objectID(for: $0.part) != nil }) else { return }
+    /// Writes the platter's `Metadata/model_settings.config` sidecar from every slicer setting declared
+    /// anywhere in the tree, once per export. Safe to call redundantly — from `asComponent` on every
+    /// component that declares settings — since it checks `fileExists` before writing: whichever
+    /// registration runs first does the actual write, the rest see the file already there and no-op.
+    static func writeConfigIfNeeded(to archive: ModelArchive) throws {
+        guard !archive.fileExists(at: configPath) else { return }
 
-    try archive.addFile(at: path, data: bambuModelSettingsConfig(for: entries, objectID: archive.objectID(for:)))
-}
+        let accumulated = archive.resultElement(Self.self)
+        guard accumulated.entries.contains(where: { archive.objectID(for: $0.part) != nil }) else { return }
 
-/// Builds a Bambu/Orca `model_settings.config` sidecar (per-object `<metadata key="..." value="..."/>`
-/// entries under `<object id="...">`), keyed by each part's assigned 3MF object id. Parts whose id can't
-/// be resolved (shouldn't happen for parts that were actually packed) are skipped rather than guessed at.
-///
-/// Entries are merged per resolved id rather than emitted one block per entry: `asComponent`'s own
-/// declaration and `onPlatter`'s re-declaration against the final packed part both land in the
-/// accumulator, and resolve to the *same* id whenever packing didn't rename or copy the part (e.g. the
-/// common `quantity == 1`, `removingMaterials == false` case) — without merging, that produces
-/// duplicate `<object>` blocks for the same id instead of one combined one.
-func bambuModelSettingsConfig(
-    for entries: [(part: Part, settings: [SlicerSettingKey: String])],
-    objectID: (Part) -> Int?
-) throws -> Data {
-    var settingsByID: [Int: [SlicerSettingKey: String]] = [:]
-    for (part, settings) in entries {
-        guard let id = objectID(part) else { continue }
-        settingsByID[id, default: [:]].merge(settings) { _, new in new }
+        try archive.addFile(at: configPath, data: accumulated.configData(objectID: archive.objectID(for:)))
     }
 
-    let document = Document()
-    let config = document.makeDocumentElement(name: "config")
-    for id in settingsByID.keys.sorted() {
-        let object = config.addElement("object")
-        object[attribute: "id"] = String(id)
-        for (key, value) in settingsByID[id]!.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let metadata = object.addElement("metadata")
-            metadata[attribute: "key"] = key.rawValue
-            metadata[attribute: "value"] = value
+    /// Builds a Bambu/Orca `model_settings.config` sidecar (per-object `<metadata key="..." value="..."/>`
+    /// entries under `<object id="...">`), keyed by each part's assigned 3MF object id. Parts whose id can't
+    /// be resolved (shouldn't happen for parts that were actually packed) are skipped rather than guessed at.
+    ///
+    /// Entries are merged per resolved id rather than emitted one block per entry: `asComponent`'s own
+    /// declaration and `onPlatter`'s re-declaration against the final packed part both land in the
+    /// accumulator, and resolve to the *same* id whenever packing didn't rename or copy the part (e.g. the
+    /// common `quantity == 1`, `removingMaterials == false` case) — without merging, that produces
+    /// duplicate `<object>` blocks for the same id instead of one combined one.
+    func configData(objectID: (Part) -> Int?) throws -> Data {
+        var settingsByID: [Int: [SlicerSettingKey: String]] = [:]
+        for (part, settings) in entries {
+            guard let id = objectID(part) else { continue }
+            settingsByID[id, default: [:]].merge(settings) { _, new in new }
         }
-    }
 
-    return try document.xmlData()
+        let document = Document()
+        let config = document.makeDocumentElement(name: "config")
+        for id in settingsByID.keys.sorted() {
+            let object = config.addElement("object")
+            object[attribute: "id"] = String(id)
+            for (key, value) in settingsByID[id]!.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                let metadata = object.addElement("metadata")
+                metadata[attribute: "key"] = key.rawValue
+                metadata[attribute: "value"] = value
+            }
+        }
+
+        return try document.xmlData()
+    }
 }
