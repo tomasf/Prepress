@@ -1,8 +1,10 @@
 # Sprue
 
-Sprue is a library for [Cadova](https://github.com/tomasf/Cadova) that prepares a model for printing. Mark the printable pieces of your model as *components*, and Sprue stands each one the right way up, multiplies it, and packs them all onto a single platter. Per-object slicer settings are embedded in the exported 3MF, so they apply themselves when the file is opened.
+Sprue is a library for [Cadova](https://github.com/tomasf/Cadova) that smooths out the workflow of developing a model for 3D printing.
 
-A model normally has to be arranged by hand in the slicer every time it's regenerated. Sprue moves that arrangement into the model, where it lives alongside the geometry and stays correct as the design changes.
+Writing a model in code makes the model itself easy to change, but the steps around it stay stubbornly manual. Every regeneration means arranging the parts on the bed again, standing up the ones that print on their side, and re-entering the per-object settings you picked last time. None of that is design work, and none of it survives the next edit.
+
+Sprue's goal is to move those steps into the model, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. What that looks like today is described below: declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and packs onto a platter, and per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
 
 ## Installation
 
