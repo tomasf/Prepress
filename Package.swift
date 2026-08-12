@@ -7,7 +7,6 @@ let package = Package(
     products: [
         .library(name: "Sprue", targets: ["Sprue"]),
         .executable(name: "generator", targets: ["generator"]),
-        .executable(name: "volume-check", targets: ["volume-check"]),
     ],
     dependencies: [
         .package(path: "../Cadova"),
@@ -24,11 +23,6 @@ let package = Package(
         .executableTarget(
             name: "generator",
             dependencies: ["Sprue", "Cadova"],
-            swiftSettings: [.interoperabilityMode(.Cxx)]
-        ),
-        .executableTarget(
-            name: "volume-check",
-            dependencies: ["Sprue", "Cadova", .product(name: "Zip", package: "Zip")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .testTarget(
