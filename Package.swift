@@ -7,10 +7,13 @@ let package = Package(
     products: [
         .library(name: "Sprue", targets: ["Sprue"]),
         .executable(name: "generator", targets: ["generator"]),
+        .executable(name: "volume-check", targets: ["volume-check"]),
     ],
     dependencies: [
         .package(path: "../Cadova"),
         .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.1"),
+        // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
+        .package(url: "https://github.com/tomasf/Zip.git", from: "2.1.2"),
     ],
     targets: [
         .target(
@@ -23,9 +26,14 @@ let package = Package(
             dependencies: ["Sprue", "Cadova"],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
+        .executableTarget(
+            name: "volume-check",
+            dependencies: ["Sprue", "Cadova", .product(name: "Zip", package: "Zip")],
+            swiftSettings: [.interoperabilityMode(.Cxx)]
+        ),
         .testTarget(
             name: "SprueTests",
-            dependencies: ["Sprue", "Cadova"],
+            dependencies: ["Sprue", "Cadova", .product(name: "Zip", package: "Zip")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
     ]

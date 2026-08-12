@@ -28,23 +28,24 @@ func components() -> any Geometry3D {
         .inComponent(name: "Dome")
 }
 
-// Two otherwise-identical blocks, distinguished only by their declared slicer settings. Bambu Studio
-// and its forks (OrcaSlicer, etc.) read these from the platter's embedded model_settings.config and
-// apply them automatically per object — no manual per-object configuration needed in the slicer.
+// Two otherwise-identical blocks, distinguished only by their declared slicer settings. The settings
+// are slicer-agnostic: each one is written into both of the platter's embedded config sidecars, so
+// Bambu Studio and its forks (OrcaSlicer, etc.) and PrusaSlicer (and SuperSlicer) all apply them
+// automatically per object — no manual per-object configuration needed in the slicer.
 @GeometryBuilder3D
 func infillDemoComponents() -> any Geometry3D {
     Box(x: 30, y: 30, z: 10)
-        .inComponent(name: "Sparse Infill (10%)", slicerSettings: [.sparseInfillDensity(10)])
+        .inComponent(name: "Sparse Infill (10%)", slicerSettings: [.infillDensity(10)])
 
     Box(x: 30, y: 30, z: 10)
-        .inComponent(name: "Dense Infill (80%)", slicerSettings: [.sparseInfillDensity(80)])
+        .inComponent(name: "Dense Infill (80%)", slicerSettings: [.infillDensity(80)])
 
     // Exercises a broader mix of typed settings: an enum pattern, a bool, and an int, alongside percent.
     Box(x: 30, y: 30, z: 10)
         .inComponent(name: "Gyroid + Support", slicerSettings: [
-            .sparseInfillPattern(.gyroid),
-            .sparseInfillDensity(20),
-            .wallLoops(4),
+            .infillPattern(.gyroid),
+            .infillDensity(20),
+            .wallCount(4),
             .enableSupport(true),
         ])
 

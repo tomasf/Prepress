@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import Cadova
+import Zip
 @testable import Sprue
 
 /// Independent separating-axis overlap test, kept separate from the nester's own NFP math so the tests
@@ -412,106 +413,192 @@ private final class BoundsCapture: @unchecked Sendable {
     #expect(placements.count == polygons.count)
 }
 
-@Test func bambuModelSettingsConfigFormatsEntriesAndEscapesValues() throws {
+// MARK: - Slicer settings
+
+@Test func bambuConfigFormatsEntriesAndEscapesValues() throws {
     let part = Part("Widget")
-    let xml = try SlicerSettingsEntries([(part, [.sparseInfillDensity: "15%", .wallLoops: "A & B <ok>"])])
-        .configData(objectID: { _ in 42 })
-    let string = String(decoding: xml, as: UTF8.self)
+    let entries = SlicerSettingsEntries([(part, .init(bambu: [
+        .sparseInfillDensity: "15%",
+        .wallLoops: "A & B <ok>",
+    ]))])
+    let data = try entries.bambuConfigData(objectID: { _ in 42 })
+    let string = try #require(data).utf8String
 
     #expect(string.contains(#"<object id="42">"#))
     #expect(string.contains(#"key="sparse_infill_density" value="15%""#))
     // `>` isn't required to be escaped in XML attribute values, and Nodal (via pugixml) doesn't.
     #expect(string.contains(#"key="wall_loops" value="A &amp; B &lt;ok>""#))
+    // Bambu's format has no `type` discriminator; that's PrusaSlicer's.
+    #expect(!string.contains("type="))
 }
 
-@Test func bambuModelSettingsConfigSkipsPartsWithUnresolvableObjectID() throws {
+@Test func configsSkipPartsWithUnresolvableObjectID() throws {
     // A part the caller can't resolve an id for (shouldn't happen for anything actually packed) is
     // skipped rather than emitting a malformed <object id="..."> entry.
-    let part = Part("Orphan")
-    let xml = try SlicerSettingsEntries([(part, [.wallLoops: "3"])]).configData(objectID: { _ in nil })
-    let string = String(decoding: xml, as: UTF8.self)
+    let entries = SlicerSettingsEntries([(Part("Orphan"), .init(bambu: [.wallLoops: "3"], prusa: [.perimeters: "3"]))])
 
-    #expect(!string.contains("<object"))
+    #expect(try entries.bambuConfigData(objectID: { _ in nil }) == nil)
+    #expect(try entries.prusaConfigData(objectID: { _ in nil }, triangleCount: { _ in 12 }) == nil)
 }
 
-@Test func bambuModelSettingsConfigMergesMultipleEntriesResolvingToTheSameID() throws {
+@Test func bambuConfigMergesMultipleEntriesResolvingToTheSameID() throws {
     // Regression: inComponent's own declaration and onPlatter's re-declaration against the final
     // packed part both resolve to the same id whenever packing didn't rename or copy the part (the
     // common quantity == 1, removingMaterials == false case) — this must produce one merged <object>
     // block, not two duplicate ones.
-    let partA = Part("A")
-    let partB = Part("B") // a distinct Part instance that still resolves to the same object id as A
-    let xml = try SlicerSettingsEntries([(partA, [.wallLoops: "3"]), (partB, [.sparseInfillDensity: "20%"])])
-        .configData(objectID: { _ in 7 })
-    let string = String(decoding: xml, as: UTF8.self)
+    let entries = SlicerSettingsEntries([
+        (Part("A"), .init(bambu: [.wallLoops: "3"])),
+        (Part("B"), .init(bambu: [.sparseInfillDensity: "20%"])), // distinct Part, same object id
+    ])
+    let data = try entries.bambuConfigData(objectID: { _ in 7 })
+    let string = try #require(data).utf8String
 
     #expect(string.components(separatedBy: "<object").count == 2) // one split point == one <object> block
     #expect(string.contains(#"key="wall_loops" value="3""#))
     #expect(string.contains(#"key="sparse_infill_density" value="20%""#))
 }
 
-@Test func infillPatternRawValuesMatchBambuStudioNotTheirLabels() throws {
+@Test func prusaConfigWritesAVolumeSpanningTheWholeMesh() throws {
+    // The load-bearing rule of PrusaSlicer's format: once an <object> block exists, the block's
+    // <volume> list *replaces* the default whole-mesh volume. An object written without one loads
+    // with no geometry at all.
+    let entries = SlicerSettingsEntries([(Part("Widget"), .init(prusa: [.fillDensity: "15%"]))])
+    let data = try entries.prusaConfigData(objectID: { _ in 3 }, triangleCount: { _ in 12 })
+    let string = try #require(data).utf8String
+
+    #expect(string.contains(#"<object id="3">"#))
+    #expect(string.contains(#"<metadata type="object" key="fill_density" value="15%" />"#))
+    // Inclusive, 0-based triangle indices: 12 triangles spans 0...11.
+    #expect(string.contains(#"<volume firstid="0" lastid="11">"#))
+    #expect(string.components(separatedBy: "<volume").count == 2) // exactly one volume per object
+}
+
+@Test func prusaConfigSkipsObjectsWithoutAUsableTriangleCount() throws {
+    // A wrong triangle range is worse than no settings: too high and PrusaSlicer refuses to open the
+    // file at all, too low and it silently drops the triangles past the end. So an object whose count
+    // couldn't be measured is left out entirely rather than guessed at.
+    let entries = SlicerSettingsEntries([(Part("Widget"), .init(prusa: [.fillDensity: "15%"]))])
+
+    #expect(try entries.prusaConfigData(objectID: { _ in 3 }, triangleCount: { _ in nil }) == nil)
+    #expect(try entries.prusaConfigData(objectID: { _ in 3 }, triangleCount: { _ in 0 }) == nil)
+}
+
+@Test func infillPatternLowersToEachSlicersOwnVocabulary() {
     // Regression: Bambu Studio's raw config value for the pattern labeled "Rectilinear" in its UI is,
     // confusingly, "zig-zag" — and a *separate* raw value "zigzag" (no hyphen) exists for the actual
-    // "Zig Zag" pattern. Getting these backwards would silently write the wrong pattern.
-    #expect(InfillPattern.rectilinear.rawValue == "zig-zag")
-    #expect(InfillPattern.zigzag.rawValue == "zigzag")
+    // "Zig Zag" pattern. PrusaSlicer spells the first one plainly. Getting these crossed would
+    // silently write the wrong pattern.
+    #expect(SlicerSetting.infillPattern(.rectilinear).bambu == [.sparseInfillPattern: "zig-zag"])
+    #expect(SlicerSetting.infillPattern(.rectilinear).prusa == [.fillPattern: "rectilinear"])
+    #expect(SlicerSetting.infillPattern(.zigzag).bambu == [.sparseInfillPattern: "zigzag"])
 
-    let part = Part("Widget")
-    let xml = try SlicerSettingsEntries([(part, [.sparseInfillPattern: InfillPattern.rectilinear.rawValue])])
-        .configData(objectID: { _ in 1 })
-    let string = String(decoding: xml, as: UTF8.self)
-    #expect(string.contains(#"key="sparse_infill_pattern" value="zig-zag""#))
+    // PrusaSlicer pluralizes this one.
+    #expect(SlicerSetting.infillPattern(.monotonicLine).bambu == [.sparseInfillPattern: "monotonicline"])
+    #expect(SlicerSetting.infillPattern(.monotonicLine).prusa == [.fillPattern: "monotoniclines"])
+}
+
+@Test func patternsMissingFromASlicerAreOmittedRatherThanApproximated() {
+    // A pattern only one slicer has must contribute *nothing* to the other's config. Substituting a
+    // near-enough pattern would silently print something the caller didn't ask for; writing the
+    // unknown name verbatim would make PrusaSlicer refuse to open the file.
+    #expect(SlicerSetting.infillPattern(.crossHatch).bambu == [.sparseInfillPattern: "crosshatch"])
+    #expect(SlicerSetting.infillPattern(.crossHatch).prusa.isEmpty)
+
+    #expect(SlicerSetting.infillPattern(.stars).prusa == [.fillPattern: "stars"])
+    #expect(SlicerSetting.infillPattern(.stars).bambu.isEmpty)
+
+    // Same rule for the other divergent vocabularies.
+    #expect(SlicerSetting.brimType(.painted).prusa.isEmpty)
+    #expect(SlicerSetting.supportBasePattern(.lightning).prusa.isEmpty)
+    #expect(SlicerSetting.wallSequence(.innerOuterInner).prusa.isEmpty)
 }
 
 @Test func slicerSettingTypedFactoriesProduceExpectedRawValues() {
-    #expect(SlicerSetting.enableSupport(true).values == [.enableSupport: "1"])
-    #expect(SlicerSetting.enableSupport(false).values == [.enableSupport: "0"])
-    #expect(SlicerSetting.wallLoops(3).values == [.wallLoops: "3"])
-    #expect(SlicerSetting.sparseInfillDensity(15).values == [.sparseInfillDensity: "15%"])
-    #expect(SlicerSetting.layerHeight(0.2).values == [.layerHeight: "0.2"])
-    #expect(SlicerSetting.seamPosition(.aligned).values == [.seamPosition: "aligned"])
-    #expect(SlicerSetting.brimType(.outerOnly).values == [.brimType: "outer_only"])
-    #expect(SlicerSetting.supportStyle(.treeOrganic).values == [.supportStyle: "tree_organic"])
-    #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).values == [.supportBasePattern: "rectilinear-grid"])
-    #expect(SlicerSetting.wallSequence(.innerOuterInner).values == [.wallSequence: "inner-outer-inner wall"])
-    #expect(SlicerSetting.ironingType(.noIroning).values == [.ironingType: "no ironing"])
+    #expect(SlicerSetting.enableSupport(true).bambu == [.enableSupport: "1"])
+    #expect(SlicerSetting.enableSupport(true).prusa == [.supportMaterial: "1"])
+    #expect(SlicerSetting.enableSupport(false).bambu == [.enableSupport: "0"])
 
-    // All of these route through the same underlying key, whichever factory is used.
-    #expect(SlicerSetting.raw(.enableSupport, "1").values == [.enableSupport: "1"])
+    #expect(SlicerSetting.wallCount(3).bambu == [.wallLoops: "3"])
+    #expect(SlicerSetting.wallCount(3).prusa == [.perimeters: "3"])
+
+    #expect(SlicerSetting.infillDensity(15).bambu == [.sparseInfillDensity: "15%"])
+    #expect(SlicerSetting.infillDensity(15).prusa == [.fillDensity: "15%"])
+
+    #expect(SlicerSetting.layerHeight(0.2).bambu == [.layerHeight: "0.2"])
+    #expect(SlicerSetting.layerHeight(0.2).prusa == [.layerHeight: "0.2"])
+
+    // PrusaSlicer calls the rearmost seam position "rear" rather than "back".
+    #expect(SlicerSetting.seamPosition(.back).bambu == [.seamPosition: "back"])
+    #expect(SlicerSetting.seamPosition(.back).prusa == [.seamPosition: "rear"])
+
+    #expect(SlicerSetting.brimType(.outerOnly).bambu == [.brimType: "outer_only"])
+    #expect(SlicerSetting.supportStyle(.treeOrganic).bambu == [.supportStyle: "tree_organic"])
+    #expect(SlicerSetting.supportStyle(.treeOrganic).prusa == [.supportMaterialStyle: "organic"])
+    #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).bambu == [.supportBasePattern: "rectilinear-grid"])
+
+    // The escape hatches are flavor-scoped, so a raw key can't land in the wrong file.
+    #expect(SlicerSetting.raw(bambu: .enableSupport, "1").bambu == [.enableSupport: "1"])
+    #expect(SlicerSetting.raw(bambu: .enableSupport, "1").prusa.isEmpty)
+    #expect(SlicerSetting.raw(prusa: .supportMaterial, "1").prusa == [.supportMaterial: "1"])
+    #expect(SlicerSetting.raw(prusa: .supportMaterial, "1").bambu.isEmpty)
+}
+
+@Test func settingsSplitAcrossSeveralOptionsInOneSlicer() {
+    // Bambu folds the support algorithm and its automatic placement into one option; PrusaSlicer keeps
+    // them apart, so one neutral setting has to lower to two keys there.
+    #expect(SlicerSetting.supportType(.treeAuto).bambu == [.supportType: "tree(auto)"])
+    #expect(SlicerSetting.supportType(.treeAuto).prusa == [
+        .supportMaterialStyle: "organic",
+        .supportMaterialAuto: "1",
+    ])
+    #expect(SlicerSetting.supportType(.normalManual).prusa == [
+        .supportMaterialStyle: "grid",
+        .supportMaterialAuto: "0",
+    ])
+
+    // PrusaSlicer has no "no ironing" mode — it has a separate flag for that.
+    #expect(SlicerSetting.ironingType(.noIroning).bambu == [.ironingType: "no ironing"])
+    #expect(SlicerSetting.ironingType(.noIroning).prusa == [.ironing: "0"])
+    #expect(SlicerSetting.ironingType(.topmost).prusa == [.ironing: "1", .ironingType: "topmost"])
 }
 
 @Test func groupedSlicerSettingsOmitUnspecifiedParameters() {
     // The defining property of the grouped factories: a parameter left out writes *nothing*, so the
     // user's own slicer profile default survives. Writing a default of our own choosing here would
     // silently override settings they never asked us to touch.
-    #expect(SlicerSetting.sparseInfill(.gyroid).values == [.sparseInfillPattern: "gyroid"])
+    #expect(SlicerSetting.infill(.gyroid).bambu == [.sparseInfillPattern: "gyroid"])
+    #expect(SlicerSetting.infill(.gyroid).prusa == [.fillPattern: "gyroid"])
 
-    #expect(SlicerSetting.sparseInfill(.gyroid, density: 20).values == [
-        .sparseInfillPattern: "gyroid",
-        .sparseInfillDensity: "20%",
+    #expect(SlicerSetting.infill(.gyroid, density: 20).prusa == [
+        .fillPattern: "gyroid",
+        .fillDensity: "20%",
     ])
 
-    #expect(SlicerSetting.sparseInfill(.lightning, density: 10, anchor: 2.5, direction: 45).values == [
+    #expect(SlicerSetting.infill(.lightning, density: 10, direction: 45°).bambu == [
         .sparseInfillPattern: "lightning",
         .sparseInfillDensity: "10%",
-        .sparseInfillAnchor: "2.5",
         .infillDirection: "45.0",
     ])
 
     // A group where every parameter is optional collapses to nothing at all rather than to defaults.
-    #expect(SlicerSetting.flush().values.isEmpty)
+    #expect(SlicerSetting.flush().bambu.isEmpty)
+    #expect(SlicerSetting.flush().prusa.isEmpty)
 }
 
 @Test func groupedSupportImpliesEnableSupport() {
-    // Regression: support_type without enable_support does nothing in Bambu Studio, so a part would
-    // silently print unsupported. Naming a type has to imply the enable flag.
-    #expect(SlicerSetting.support(.treeAuto).values == [
+    // Regression: a support type without the enable flag does nothing in either slicer, so a part
+    // would silently print unsupported. Naming a type has to imply the enable flag.
+    #expect(SlicerSetting.support(.treeAuto).bambu == [
         .enableSupport: "1",
         .supportType: "tree(auto)",
     ])
+    #expect(SlicerSetting.support(.treeAuto).prusa == [
+        .supportMaterial: "1",
+        .supportMaterialStyle: "organic",
+        .supportMaterialAuto: "1",
+    ])
 
-    #expect(SlicerSetting.support(.normalAuto, style: .snug, thresholdAngle: 40, onBuildPlateOnly: true).values == [
+    #expect(SlicerSetting.support(.normalAuto, style: .snug, thresholdAngle: 40°, onBuildPlateOnly: true).bambu == [
         .enableSupport: "1",
         .supportType: "normal(auto)",
         .supportStyle: "snug",
@@ -519,51 +606,240 @@ private final class BoundsCapture: @unchecked Sendable {
         .supportOnBuildPlateOnly: "1",
     ])
 
-    #expect(SlicerSetting.noSupport.values == [.enableSupport: "0"])
+    // An explicit style has to win over the one implied by the type, in both flavors.
+    #expect(SlicerSetting.support(.normalAuto, style: .snug).prusa[.supportMaterialStyle] == "snug")
+
+    #expect(SlicerSetting.noSupport.bambu == [.enableSupport: "0"])
+    #expect(SlicerSetting.noSupport.prusa == [.supportMaterial: "0"])
+}
+
+@Test func anglesAreWrittenAsDegreesWhicheverUnitTheyWereBuiltFrom() {
+    // Both config formats want a bare number of degrees, so an angle expressed in any other unit has
+    // to be converted rather than serialized as whatever it was constructed with.
+    #expect(SlicerSetting.infillDirection(.radians(.pi / 4)).bambu == [.infillDirection: "45.0"])
+    #expect(SlicerSetting.infillDirection(.radians(.pi / 4)).prusa == [.fillAngle: "45.0"])
+    #expect(SlicerSetting.infillDirection(Angle(turns: 0.25)).prusa == [.fillAngle: "90.0"])
+
+    // The support threshold is an integer option in both slicers, so it must not pick up a fractional
+    // part from the Angle round-trip the way the double-valued angles do.
+    #expect(SlicerSetting.supportThresholdAngle(40°).bambu == [.supportThresholdAngle: "40"])
+    #expect(SlicerSetting.supportThresholdAngle(40°).prusa == [.supportMaterialThreshold: "40"])
+    #expect(SlicerSetting.supportThresholdAngle(.radians(.pi / 4)).prusa == [.supportMaterialThreshold: "45"])
 }
 
 @Test func laterSlicerSettingsOverrideEarlierGroupedOnesPerKey() {
-    // Groups and single-key factories mix in one array; collapsing is per key, last one wins, so a
-    // single setting can refine one value out of a group without discarding the rest of it.
+    // Groups and single-option factories mix in one array; collapsing is per key within each flavor,
+    // last one wins, so a single setting can refine one value out of a group without discarding the
+    // rest of it.
     let settings: [SlicerSetting] = [
-        .sparseInfill(.gyroid, density: 20, anchor: 2),
-        .sparseInfillDensity(50),
+        .infill(.gyroid, density: 20),
+        .infillDensity(50),
     ]
 
-    #expect(settings.byKey == [
+    #expect(settings.resolved.bambu == [
         .sparseInfillPattern: "gyroid",
         .sparseInfillDensity: "50%",
-        .sparseInfillAnchor: "2.0",
+    ])
+    #expect(settings.resolved.prusa == [
+        .fillPattern: "gyroid",
+        .fillDensity: "50%",
     ])
 }
 
-@Test func forkExtensionFactoriesProduceExpectedRawValues() {
-    // OrcaSlicer extension.
-    #expect(SlicerSetting.zContouringEnabled(true).values == [.zContouringEnabled: "1"])
-    #expect(SlicerSetting.infillAnchor(50).values == [.infillAnchor: "50.0"])
-    #expect(SlicerSetting.topSurfaceExpansionDirection(.outward).values == [.topSurfaceExpansionDirection: "outward"])
+@Test func forkOnlySettingsNeverReachThePrusaConfig() {
+    // OrcaSlicer/Creality extensions have no PrusaSlicer equivalent. Leaking one into that file would
+    // make PrusaSlicer throw on the unknown key and refuse to open the whole 3MF.
+    #expect(SlicerSetting.zContouringEnabled(true).bambu == [.zContouringEnabled: "1"])
+    #expect(SlicerSetting.zContouringEnabled(true).prusa.isEmpty)
 
-    // Creality Print extension.
-    #expect(SlicerSetting.supportBasePatternTree(.honeycomb).values == [.supportBasePatternTree: "honeycomb"])
-    #expect(SlicerSetting.overhangSpeedClassic(false).values == [.overhangSpeedClassic: "0"])
+    #expect(SlicerSetting.topSurfaceExpansionDirection(.outward).prusa.isEmpty)
+    #expect(SlicerSetting.supportBasePatternTree(.honeycomb).bambu == [.supportBasePatternTree: "honeycomb"])
+    #expect(SlicerSetting.supportBasePatternTree(.honeycomb).prusa.isEmpty)
+    #expect(SlicerSetting.overhangSpeedClassic(false).bambu == [.overhangSpeedClassic: "0"])
+    #expect(SlicerSetting.overhangSpeedClassic(false).prusa.isEmpty)
+
+    // Bambu renamed the anchor options in its forks, so both spellings go into that flavor's file —
+    // each fork reads the one it knows. PrusaSlicer gets only its own.
+    #expect(SlicerSetting.infillAnchor(50).bambu == [.sparseInfillAnchor: "50.0", .infillAnchor: "50.0"])
+    #expect(SlicerSetting.infillAnchor(50).prusa == [.infillAnchor: "50.0"])
 }
 
-@Test func onPlatterEmbedsModelSettingsConfigForComponentsWithSlicerSettings() async throws {
-    // End-to-end: a component declared with slicerSettings must cause onPlatter() to embed a
-    // Metadata/model_settings.config sidecar in the exported 3MF archive.
-    let component = Component("Configured", upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
+// MARK: - Slicer settings, end to end
+
+private extension Data {
+    var utf8String: String { String(decoding: self, as: UTF8.self) }
+}
+
+private extension String {
+    /// The value of `name="…"` in this XML fragment, if present.
+    func attributeValue(_ name: String) -> String? {
+        guard let start = range(of: "\(name)=\"") else { return nil }
+        let rest = self[start.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return String(rest[..<end])
+    }
+
+    /// Every `<tag …>` fragment in this document, each running up to the next one.
+    func fragments(forTag tag: String) -> [String] {
+        Array(components(separatedBy: "<\(tag) ").dropFirst())
+    }
+}
+
+private extension ZipArchive<Data> {
+    func text(at path: String) throws -> String {
+        try fileContents(at: path).utf8String
+    }
+
+    /// The number of triangles actually serialized for each build item, keyed by the same object id
+    /// the config sidecars reference.
+    func serializedTriangleCounts() throws -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        for item in try text(at: "3D/3dmodel.model").fragments(forTag: "item") {
+            guard let id = item.attributeValue("objectid").flatMap(Int.init) else { continue }
+            // Parts each get their own model file; a lone object stays inline in the root model.
+            let path = item.attributeValue("p:path").map { String($0.dropFirst()) } ?? "3D/3dmodel.model"
+            counts[id] = try text(at: path).fragments(forTag: "triangle").count
+        }
+        return counts
+    }
+
+    /// Each object id in PrusaSlicer's sidecar, paired with the `lastid` of its volume.
+    func prusaVolumeRanges() throws -> [Int: (firstID: Int, lastID: Int)] {
+        var ranges: [Int: (Int, Int)] = [:]
+        for object in try text(at: SlicerSettingsEntries.prusaConfigPath).fragments(forTag: "object") {
+            guard let id = object.attributeValue("id").flatMap(Int.init),
+                  let volume = object.fragments(forTag: "volume").first,
+                  let first = volume.attributeValue("firstid").flatMap(Int.init),
+                  let last = volume.attributeValue("lastid").flatMap(Int.init)
+            else { continue }
+            ranges[id] = (first, last)
+        }
+        return ranges
+    }
+}
+
+@Test func prusaVolumeRangeMatchesTheMeshActuallyWritten() async throws {
+    // The one that matters most. PrusaSlicer validates this range against the serialized mesh and
+    // fails the whole load when lastid runs past the end; a range that's merely short silently drops
+    // triangles. Nothing else in the pipeline would catch an off-by-one or a mis-scoped measurement,
+    // so this compares against the triangles genuinely present in the archive.
+    let platter = Box(x: 20, y: 20, z: 10)
+        .inComponent(name: "Blocky", slicerSettings: [.infillDensity(15)])
+        .adding {
+            Sphere(radius: 8)
+                .inComponent(name: "Round", slicerSettings: [.wallCount(4)])
+        }
+        .onPlatter()
+
+    let data = try await ModelFileGenerator.build { platter }.data()
+    let archive = try ZipArchive(data: data)
+
+    let counts = try archive.serializedTriangleCounts()
+    let ranges = try archive.prusaVolumeRanges()
+
+    #expect(ranges.count == 2)
+    for (id, range) in ranges {
+        let triangleCount = try #require(counts[id], "no serialized mesh for object \(id)")
+        #expect(triangleCount > 0)
+        #expect(range.firstID == 0)
+        #expect(range.lastID == triangleCount - 1)
+    }
+}
+
+@Test func multipliedComponentsGetTheirOwnVolumeRanges() async throws {
+    // A quantity above 1 makes packing emit each copy as its own renamed part, so the settings and
+    // the volume range have to follow the *packed* part rather than the one the component declared.
+    // Distinct shapes here so a mix-up between copies couldn't pass by coincidence.
+    let platter = Cylinder(diameter: 12, height: 6).withSegmentation(count: 6)
+        .inComponent(name: "Hex", quantity: 3, slicerSettings: [.infillDensity(35)])
+        .adding {
+            Sphere(radius: 7)
+                .inComponent(name: "Ball", slicerSettings: [.wallCount(2)])
+        }
+        .onPlatter()
+
+    let data = try await ModelFileGenerator.build { platter }.data()
+    let archive = try ZipArchive(data: data)
+
+    let counts = try archive.serializedTriangleCounts()
+    let ranges = try archive.prusaVolumeRanges()
+
+    #expect(ranges.count == 4) // three hex copies plus the ball
+    for (id, range) in ranges {
+        let triangleCount = try #require(counts[id], "no serialized mesh for object \(id)")
+        #expect(range.lastID == triangleCount - 1)
+    }
+    // The sphere is far denser than the hex prism, so the ranges must not all be identical.
+    #expect(Set(ranges.values.map(\.lastID)).count > 1)
+}
+
+@Test func nestedPartsAreExcludedFromTheVolumeRange() async throws {
+    // Regression for the measurement scope. A part's geometry can still carry nested parts, which the
+    // 3MF writer emits as their own objects rather than as part of this mesh — measuring with the
+    // default `.solidParts` scope would count them twice over and overshoot the range, which
+    // PrusaSlicer rejects outright.
+    //
+    // Deliberately *without* onPlatter(): packing strips nested parts out of a component, so routing
+    // this through the platter would leave nothing nested to get the scope wrong about. The sphere is
+    // far denser than the box, so a mis-scoped count overshoots by three orders of magnitude.
+    let component = Box(x: 20, y: 20, z: 10)
+        .adding {
+            Sphere(radius: 6)
+                .translated(x: 40)
+                .inPart(Part("Tagalong"))
+        }
+        .inComponent(name: "Host", slicerSettings: [.infillDensity(15)])
+
+    let data = try await ModelFileGenerator.build { component }.data()
+    let archive = try ZipArchive(data: data)
+
+    let counts = try archive.serializedTriangleCounts()
+    let ranges = try archive.prusaVolumeRanges()
+
+    #expect(!ranges.isEmpty)
+    for (id, range) in ranges {
+        let triangleCount = try #require(counts[id])
+        #expect(range.lastID == triangleCount - 1)
+    }
+}
+
+@Test func onPlatterEmbedsBothConfigSidecarsForComponentsWithSlicerSettings() async throws {
+    // End-to-end: a component declared with slicerSettings must cause onPlatter() to embed both
+    // sidecars, so the one file configures Bambu-lineage slicers and PrusaSlicer alike.
+    let component = Component("Configured", upDirection: .up, slicerSettings: [.infillDensity(15)])
     let platter = Box(10)
         .inComponent(component)
         .onPlatter()
 
     let data = try await ModelFileGenerator.build { platter }.data()
+    let archive = try ZipArchive(data: data)
 
-    // The zip's central directory stores entry names as literal (uncompressed) bytes, so this is a
-    // reliable way to confirm the file was actually added to the archive without needing a zip reader.
-    #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) != nil)
+    #expect(archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+    #expect(archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
+
+    #expect(try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+        .contains(#"key="sparse_infill_density" value="15%""#))
+    #expect(try archive.text(at: SlicerSettingsEntries.prusaConfigPath)
+        .contains(#"key="fill_density" value="15%""#))
 }
 
-@Test func onPlatterOmitsModelSettingsConfigWithoutSlicerSettings() async throws {
+@Test func aSettingOnlyOneSlicerSupportsWritesOnlyThatSlicersFile() async throws {
+    // A component configured purely with fork-only settings has nothing to say to PrusaSlicer, so
+    // that sidecar must be left out rather than written empty (or, worse, written with keys
+    // PrusaSlicer would choke on).
+    let component = Component("Orca Only", upDirection: .up, slicerSettings: [.zContouringEnabled(true)])
+    let platter = Box(10)
+        .inComponent(component)
+        .onPlatter()
+
+    let data = try await ModelFileGenerator.build { platter }.data()
+    let archive = try ZipArchive(data: data)
+
+    #expect(archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+    #expect(!archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
+}
+
+@Test func onPlatterOmitsConfigsWithoutSlicerSettings() async throws {
     // No component declared slicerSettings, so no sidecar file should be added at all.
     let component = Component("Plain", upDirection: .up)
     let platter = Box(10)
@@ -571,25 +847,31 @@ private final class BoundsCapture: @unchecked Sendable {
         .onPlatter()
 
     let data = try await ModelFileGenerator.build { platter }.data()
-    #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) == nil)
+    let archive = try ZipArchive(data: data)
+
+    #expect(!archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+    #expect(!archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
 }
 
-@Test func inComponentEmbedsModelSettingsConfigWithoutOnPlatter() async throws {
+@Test func inComponentEmbedsConfigsWithoutOnPlatter() async throws {
     // slicerSettings must not require onPlatter() — a bare inComponent, exported directly, should
-    // still embed the sidecar (inComponent's own part is never renamed/copied without packing, so it
+    // still embed the sidecars (inComponent's own part is never renamed/copied without packing, so it
     // resolves to a real object id on its own).
-    let component = Box(10).inComponent(Component("Standalone", upDirection: .up, slicerSettings: [.wallLoops(3)]))
+    let component = Box(10).inComponent(Component("Standalone", upDirection: .up, slicerSettings: [.wallCount(3)]))
 
     let data = try await ModelFileGenerator.build { component }.data()
-    #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) != nil)
+    let archive = try ZipArchive(data: data)
+
+    #expect(archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+    #expect(archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
 }
 
-@Test func multipleComponentsWithoutOnPlatterShareOneModelSettingsConfigWithoutCrashing() async throws {
-    // Every component with slicerSettings registers its own postprocessing handler independently.
-    // With two components in the same export, both handlers run — this must not throw (a naive
-    // "just always addFile" implementation would throw ZipError.duplicateFileEntry on the second one).
-    let a = Component("A", upDirection: .up, slicerSettings: [.sparseInfillDensity(15)])
-    let b = Component("B", upDirection: .up, slicerSettings: [.sparseInfillDensity(80)])
+@Test func multipleComponentsShareOneConfigOfEachKindWithoutCrashing() async throws {
+    // Every component with slicerSettings registers its own archive finalizer independently. With two
+    // components in the same export, both run — this must not throw (a naive "just always addFile"
+    // implementation would throw ZipError.duplicateFileEntry on the second one).
+    let a = Component("A", upDirection: .up, slicerSettings: [.infillDensity(15)])
+    let b = Component("B", upDirection: .up, slicerSettings: [.infillDensity(80)])
     let assembly = Box(10)
         .inComponent(a)
         .adding {
@@ -598,5 +880,13 @@ private final class BoundsCapture: @unchecked Sendable {
         }
 
     let data = try await ModelFileGenerator.build { assembly }.data()
-    #expect(data.range(of: Data("Metadata/model_settings.config".utf8)) != nil)
+    let archive = try ZipArchive(data: data)
+
+    // Both components land in one file per flavor, each as its own <object> block.
+    let bambu = try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+    #expect(bambu.fragments(forTag: "object").count == 2)
+
+    let prusa = try archive.text(at: SlicerSettingsEntries.prusaConfigPath)
+    #expect(prusa.fragments(forTag: "object").count == 2)
+    #expect(prusa.fragments(forTag: "volume").count == 2)
 }

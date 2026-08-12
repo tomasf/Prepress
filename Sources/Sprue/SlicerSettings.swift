@@ -1,288 +1,441 @@
 import Foundation
 import Cadova
-internal import Nodal
 
 // MARK: - Enumerated setting values
 
-/// Infill/surface fill pattern. Bambu Studio's exact accepted raw values and their meaning, verified
-/// against its source (`PrintConfig.cpp`'s `sparse_infill_pattern`/`top_surface_pattern` definitions).
+/// Infill/surface fill pattern.
+///
+/// Cases are named for the pattern itself; each one knows the raw value its slicer flavor expects,
+/// which frequently differ (Bambu's `rectilinear` is spelled `zig-zag`, and its `monotonicLine` is
+/// PrusaSlicer's `monotoniclines`). A pattern that only one flavor has lowers to `nil` for the other
+/// and is simply left out of that flavor's config rather than approximated.
 ///
 /// Not every case is valid for every pattern-typed setting: ``SlicerSetting/topSurfacePattern(_:)``,
 /// ``SlicerSetting/bottomSurfacePattern(_:)``, and ``SlicerSetting/internalSolidInfillPattern(_:)``
 /// only accept `concentric`, `rectilinear`, `monotonic`, `monotonicLine`, `alignedRectilinear`,
 /// `hilbertCurve`, `archimedeanChords`, and `octagramSpiral` — the rest are only meaningful for
-/// ``SlicerSetting/sparseInfillPattern(_:)``.
-///
-/// - Note: Bambu's raw value for `rectilinear` is, confusingly, `"zig-zag"` — a legacy name from
-///   before the pattern was renamed in the UI. A separate, distinct `zigzag` case (no hyphen) exists
-///   for the actual "Zig Zag" pattern; the two are not aliases of each other.
-public enum InfillPattern: String, Sendable {
+/// ``SlicerSetting/infillPattern(_:)``.
+public enum InfillPattern: Sendable {
     case concentric
-    case rectilinear = "zig-zag"
+    case rectilinear
     case grid
     case line
     case cubic
     case triangles
-    case triHexagon = "tri-hexagon"
+    /// Bambu Studio and its forks only.
+    case triHexagon
     case gyroid
     case honeycomb
-    case adaptiveCubic = "adaptivecubic"
-    case alignedRectilinear = "alignedrectilinear"
-    case honeycomb3D = "3dhoneycomb"
-    case hilbertCurve = "hilbertcurve"
-    case archimedeanChords = "archimedeanchords"
-    case octagramSpiral = "octagramspiral"
-    case supportCubic = "supportcubic"
+    case adaptiveCubic
+    case alignedRectilinear
+    case honeycomb3D
+    case hilbertCurve
+    case archimedeanChords
+    case octagramSpiral
+    case supportCubic
     case lightning
-    case crossHatch = "crosshatch"
+    /// Bambu Studio and its forks only.
+    case crossHatch
     case zigzag
-    case crossZag = "crosszag"
-    case lockedZag = "lockedzag"
+    /// Bambu Studio and its forks only.
+    case crossZag
+    /// Bambu Studio and its forks only.
+    case lockedZag
     case monotonic
-    case monotonicLine = "monotonicline"
+    case monotonicLine
+    /// PrusaSlicer only.
+    case stars
+
+    /// - Note: Bambu's raw value for `rectilinear` is, confusingly, `"zig-zag"` — a legacy name from
+    ///   before the pattern was renamed in the UI. The distinct `zigzag` case (no hyphen) is the
+    ///   actual "Zig Zag" pattern; the two are not aliases of each other.
+    var bambuValue: String? {
+        switch self {
+        case .concentric: "concentric"
+        case .rectilinear: "zig-zag"
+        case .grid: "grid"
+        case .line: "line"
+        case .cubic: "cubic"
+        case .triangles: "triangles"
+        case .triHexagon: "tri-hexagon"
+        case .gyroid: "gyroid"
+        case .honeycomb: "honeycomb"
+        case .adaptiveCubic: "adaptivecubic"
+        case .alignedRectilinear: "alignedrectilinear"
+        case .honeycomb3D: "3dhoneycomb"
+        case .hilbertCurve: "hilbertcurve"
+        case .archimedeanChords: "archimedeanchords"
+        case .octagramSpiral: "octagramspiral"
+        case .supportCubic: "supportcubic"
+        case .lightning: "lightning"
+        case .crossHatch: "crosshatch"
+        case .zigzag: "zigzag"
+        case .crossZag: "crosszag"
+        case .lockedZag: "lockedzag"
+        case .monotonic: "monotonic"
+        case .monotonicLine: "monotonicline"
+        case .stars: nil
+        }
+    }
+
+    var prusaValue: String? {
+        switch self {
+        case .concentric: "concentric"
+        case .rectilinear: "rectilinear"
+        case .grid: "grid"
+        case .line: "line"
+        case .cubic: "cubic"
+        case .triangles: "triangles"
+        case .triHexagon: nil
+        case .gyroid: "gyroid"
+        case .honeycomb: "honeycomb"
+        case .adaptiveCubic: "adaptivecubic"
+        case .alignedRectilinear: "alignedrectilinear"
+        case .honeycomb3D: "3dhoneycomb"
+        case .hilbertCurve: "hilbertcurve"
+        case .archimedeanChords: "archimedeanchords"
+        case .octagramSpiral: "octagramspiral"
+        case .supportCubic: "supportcubic"
+        case .lightning: "lightning"
+        case .crossHatch: nil
+        case .zigzag: "zigzag"
+        case .crossZag: nil
+        case .lockedZag: nil
+        case .monotonic: "monotonic"
+        case .monotonicLine: "monotoniclines"
+        case .stars: "stars"
+        }
+    }
 }
 
 /// Seam positioning strategy.
-public enum SeamPosition: String, Sendable {
+public enum SeamPosition: Sendable {
     case nearest, aligned, back, random
+
+    var bambuValue: String? {
+        switch self {
+        case .nearest: "nearest"
+        case .aligned: "aligned"
+        case .back: "back"
+        case .random: "random"
+        }
+    }
+
+    /// PrusaSlicer calls the rearmost position `rear` rather than `back`.
+    var prusaValue: String? {
+        switch self {
+        case .nearest: "nearest"
+        case .aligned: "aligned"
+        case .back: "rear"
+        case .random: "random"
+        }
+    }
 }
 
 /// Ironing mode applied to top surfaces.
-public enum IroningType: String, Sendable {
-    case noIroning = "no ironing"
+///
+/// PrusaSlicer splits this in two: a separate `ironing` flag turns the feature on, and `ironing_type`
+/// selects the surfaces. ``SlicerSetting/ironingType(_:)`` writes both, so `noIroning` disables
+/// ironing there rather than selecting a "none" mode it doesn't have.
+public enum IroningType: Sendable {
+    /// Understood by every slicer, but reached differently: PrusaSlicer has no "none" mode, so this
+    /// clears its separate `ironing` flag instead.
+    case noIroning
     case top
     case topmost
     case solid
+
+    var bambuValue: String? {
+        switch self {
+        case .noIroning: "no ironing"
+        case .top: "top"
+        case .topmost: "topmost"
+        case .solid: "solid"
+        }
+    }
+
+    var prusaValue: String? {
+        switch self {
+        case .noIroning: nil
+        case .top: "top"
+        case .topmost: "topmost"
+        case .solid: "solid"
+        }
+    }
 }
 
 /// Support generation algorithm.
-public enum SupportType: String, Sendable {
-    case normalAuto = "normal(auto)"
-    case treeAuto = "tree(auto)"
-    case normalManual = "normal(manual)"
-    case treeManual = "tree(manual)"
+///
+/// Bambu Studio expresses the algorithm and whether it's placed automatically in one option;
+/// PrusaSlicer keeps them apart as `support_material_style` and `support_material_auto`.
+/// ``SlicerSetting/supportType(_:)`` writes both on the PrusaSlicer side.
+public enum SupportType: Sendable {
+    case normalAuto
+    case treeAuto
+    case normalManual
+    case treeManual
+
+    var bambuValue: String? {
+        switch self {
+        case .normalAuto: "normal(auto)"
+        case .treeAuto: "tree(auto)"
+        case .normalManual: "normal(manual)"
+        case .treeManual: "tree(manual)"
+        }
+    }
+
+    var isAutomatic: Bool {
+        switch self {
+        case .normalAuto, .treeAuto: true
+        case .normalManual, .treeManual: false
+        }
+    }
+
+    var prusaStyleValue: String? {
+        switch self {
+        case .normalAuto, .normalManual: "grid"
+        case .treeAuto, .treeManual: "organic"
+        }
+    }
 }
 
 /// Support structure style.
-public enum SupportStyle: String, Sendable {
+public enum SupportStyle: Sendable {
+    /// Bambu Studio and its forks only.
     case `default`
     case grid
     case snug
-    case treeSlim = "tree_slim"
-    case treeStrong = "tree_strong"
-    case treeHybrid = "tree_hybrid"
-    case treeOrganic = "tree_organic"
+    /// PrusaSlicer collapses this to its single `tree` style.
+    case treeSlim
+    /// PrusaSlicer collapses this to its single `tree` style.
+    case treeStrong
+    /// PrusaSlicer collapses this to its single `tree` style.
+    case treeHybrid
+    case treeOrganic
+
+    var bambuValue: String? {
+        switch self {
+        case .default: "default"
+        case .grid: "grid"
+        case .snug: "snug"
+        case .treeSlim: "tree_slim"
+        case .treeStrong: "tree_strong"
+        case .treeHybrid: "tree_hybrid"
+        case .treeOrganic: "tree_organic"
+        }
+    }
+
+    /// PrusaSlicer has a single `tree` style where Bambu has three tuned variants, plus `organic`.
+    var prusaValue: String? {
+        switch self {
+        case .default: nil
+        case .grid: "grid"
+        case .snug: "snug"
+        case .treeSlim, .treeStrong, .treeHybrid: "tree"
+        case .treeOrganic: "organic"
+        }
+    }
 }
 
 /// Support base (interface/raft-like) fill pattern.
-public enum SupportBasePattern: String, Sendable {
+public enum SupportBasePattern: Sendable {
     case `default`
     case rectilinear
-    case rectilinearGrid = "rectilinear-grid"
+    case rectilinearGrid
     case honeycomb
+    /// Bambu Studio and its forks only.
     case lightning
+    /// Bambu Studio and its forks only.
     case hollow
+
+    var bambuValue: String? {
+        switch self {
+        case .default: "default"
+        case .rectilinear: "rectilinear"
+        case .rectilinearGrid: "rectilinear-grid"
+        case .honeycomb: "honeycomb"
+        case .lightning: "lightning"
+        case .hollow: "hollow"
+        }
+    }
+
+    var prusaValue: String? {
+        switch self {
+        case .default, .lightning, .hollow: nil
+        case .rectilinear: "rectilinear"
+        case .rectilinearGrid: "rectilinear-grid"
+        case .honeycomb: "honeycomb"
+        }
+    }
 }
 
 /// Brim generation strategy.
-public enum BrimType: String, Sendable {
-    case auto = "auto_brim"
-    case painted = "brim_ears"
-    case outerOnly = "outer_only"
-    case innerOnly = "inner_only"
-    case outerAndInner = "outer_and_inner"
-    case none = "no_brim"
+public enum BrimType: Sendable {
+    /// Bambu Studio and its forks only.
+    case auto
+    /// Bambu Studio and its forks only.
+    case painted
+    case outerOnly
+    case innerOnly
+    case outerAndInner
+    case none
+
+    var bambuValue: String? {
+        switch self {
+        case .auto: "auto_brim"
+        case .painted: "brim_ears"
+        case .outerOnly: "outer_only"
+        case .innerOnly: "inner_only"
+        case .outerAndInner: "outer_and_inner"
+        case .none: "no_brim"
+        }
+    }
+
+    var prusaValue: String? {
+        switch self {
+        case .auto, .painted: nil
+        case .outerOnly: "outer_only"
+        case .innerOnly: "inner_only"
+        case .outerAndInner: "outer_and_inner"
+        case .none: "no_brim"
+        }
+    }
 }
 
 /// Wall printing order.
-public enum WallSequence: String, Sendable {
-    case innerOuter = "inner wall/outer wall"
-    case outerInner = "outer wall/inner wall"
-    case innerOuterInner = "inner-outer-inner wall"
+///
+/// PrusaSlicer has no ordering option of its own — only a boolean for whether the external perimeter
+/// comes first — so `innerOuterInner` has no equivalent there and is left out of its config.
+public enum WallSequence: Sendable {
+    case innerOuter
+    case outerInner
+    /// Bambu Studio and its forks only.
+    case innerOuterInner
+
+    var bambuValue: String? {
+        switch self {
+        case .innerOuter: "inner wall/outer wall"
+        case .outerInner: "outer wall/inner wall"
+        case .innerOuterInner: "inner-outer-inner wall"
+        }
+    }
+
+    var prusaExternalPerimetersFirstValue: String? {
+        switch self {
+        case .innerOuter: "0"
+        case .outerInner: "1"
+        case .innerOuterInner: nil
+        }
+    }
 }
 
-/// Direction top-surface expansion grows in. OrcaSlicer only.
+/// Direction top-surface expansion grows in. **OrcaSlicer only.**
 public enum TopSurfaceExpansionDirection: String, Sendable {
     case inwardAndOutward = "inward_and_outward"
     case inward
     case outward
 }
 
-// MARK: - Setting keys
-
-/// A slicer print-setting option, identified by its underlying config key.
-///
-/// This mirrors the options exposed in Bambu Studio's own per-object/per-part settings menu — the
-/// same curated set defined in its source as `OBJECT_CATEGORY_SETTINGS`/`PART_CATEGORY_SETTINGS`
-/// (`GUI_Factories.cpp`) — rather than every print option that theoretically exists in its config
-/// system (many of the rest are printer/filament-level, or per-extruder array values that don't have
-/// clear single-value semantics as a per-object override). It also includes the equivalent curated
-/// set from two popular Bambu Studio forks, OrcaSlicer and Creality Print, for options they add that
-/// Bambu Studio doesn't have — those are marked as such below. All three read the same
-/// `model_settings.config` sidecar format, so a key one fork doesn't recognize is simply ignored by
-/// it rather than causing an error.
-///
-/// Since this is a plain `String`-backed enum, it's `RawRepresentable`, so a key not listed here can
-/// still be used via `SlicerSettingKey(rawValue: "some_other_key")`.
-public enum SlicerSettingKey: String, Sendable {
-    // Quality
-    case layerHeight = "layer_height"
-    case wallSequence = "wall_sequence"
-    case seamPosition = "seam_position"
-    case seamGap = "seam_gap"
-    case wipeSpeed = "wipe_speed"
-    case sliceClosingRadius = "slice_closing_radius"
-    case resolution
-    case xyHoleCompensation = "xy_hole_compensation"
-    case xyContourCompensation = "xy_contour_compensation"
-    case elephantFootCompensation = "elefant_foot_compensation"
-    case preciseZHeight = "precise_z_height"
-
-    // Support & adhesion
-    case brimType = "brim_type"
-    case brimWidth = "brim_width"
-    case brimObjectGap = "brim_object_gap"
-    case enableSupport = "enable_support"
-    case supportType = "support_type"
-    case supportThresholdAngle = "support_threshold_angle"
-    case supportOnBuildPlateOnly = "support_on_build_plate_only"
-    case supportFilament = "support_filament"
-    case supportInterfaceFilament = "support_interface_filament"
-    case supportExpansion = "support_expansion"
-    case supportStyle = "support_style"
-    case treeSupportBranchAngle = "tree_support_branch_angle"
-    case treeSupportWallCount = "tree_support_wall_count"
-    case treeSupportBranchDiameterAngle = "tree_support_branch_diameter_angle"
-    case supportTopZDistance = "support_top_z_distance"
-    case supportBottomZDistance = "support_bottom_z_distance"
-    case supportBasePattern = "support_base_pattern"
-    case supportBasePatternSpacing = "support_base_pattern_spacing"
-    case supportInterfaceTopLayers = "support_interface_top_layers"
-    case supportInterfaceBottomLayers = "support_interface_bottom_layers"
-    case supportInterfaceSpacing = "support_interface_spacing"
-    case supportBottomInterfaceSpacing = "support_bottom_interface_spacing"
-    case supportObjectXYDistance = "support_object_xy_distance"
-    case bridgeNoSupport = "bridge_no_support"
-    case maxBridgeLength = "max_bridge_length"
-    case supportCriticalRegionsOnly = "support_critical_regions_only"
-    case supportRemoveSmallOverhang = "support_remove_small_overhang"
-    case supportObjectFirstLayerGap = "support_object_first_layer_gap"
-
-    // Ironing
-    case ironingType = "ironing_type"
-    case ironingFlow = "ironing_flow"
-    case ironingSpacing = "ironing_spacing"
-    case ironingInset = "ironing_inset"
-    case ironingSpeed = "ironing_speed"
-    case ironingDirection = "ironing_direction"
-
-    // Strength / infill
-    case wallLoops = "wall_loops"
-    case topShellLayers = "top_shell_layers"
-    case topShellThickness = "top_shell_thickness"
-    case bottomShellLayers = "bottom_shell_layers"
-    case bottomShellThickness = "bottom_shell_thickness"
-    case sparseInfillDensity = "sparse_infill_density"
-    case sparseInfillPattern = "sparse_infill_pattern"
-    case sparseInfillAnchor = "sparse_infill_anchor"
-    case sparseInfillAnchorMax = "sparse_infill_anchor_max"
-    case topSurfacePattern = "top_surface_pattern"
-    case bottomSurfacePattern = "bottom_surface_pattern"
-    case internalSolidInfillPattern = "internal_solid_infill_pattern"
-    case infillCombination = "infill_combination"
-    case infillWallOverlap = "infill_wall_overlap"
-    case infillDirection = "infill_direction"
-    case bridgeAngle = "bridge_angle"
-    case minimumSparseInfillArea = "minimum_sparse_infill_area"
-
-    // Multi-material
-    case extruder
-    case flushIntoInfill = "flush_into_infill"
-    case flushIntoObjects = "flush_into_objects"
-    case flushIntoSupport = "flush_into_support"
-
-    // MARK: OrcaSlicer extensions (not recognized by vanilla Bambu Studio)
-
-    case makeOverhangPrintableAngle = "make_overhang_printable_angle"
-    case makeOverhangPrintableHoleSize = "make_overhang_printable_hole_size"
-    case makeOverhangPrintable = "make_overhang_printable"
-    case brimFlowRatio = "brim_flow_ratio"
-    case brimUseEfcOutline = "brim_use_efc_outline"
-    case supportThresholdOverlap = "support_threshold_overlap"
-    case treeSupportBrimWidth = "tree_support_brim_width"
-    case treeSupportBranchAngleOrganic = "tree_support_branch_angle_organic"
-    case bridgeFlow = "bridge_flow"
-    case bridgeDensity = "bridge_density"
-    case ironingExpansion = "ironing_expansion"
-    case zContouringEnabled = "zaa_enabled"
-    case zContouringMinimizeWallHeightAngle = "zaa_minimize_perimeter_height"
-    case zContouringDisableAlternatingFillDirection = "zaa_dont_alternate_fill_direction"
-    case zContouringMinimumZHeight = "zaa_min_z"
-    case topSurfaceDensity = "top_surface_density"
-    case bottomSurfaceDensity = "bottom_surface_density"
-    case fillMultiline = "fill_multiline"
-    case lateralLatticeAngle1 = "lateral_lattice_angle_1"
-    case lateralLatticeAngle2 = "lateral_lattice_angle_2"
-    case infillOverhangAngle = "infill_overhang_angle"
-    case lightningOverhangAngle = "lightning_overhang_angle"
-    case lightningPruneAngle = "lightning_prune_angle"
-    case lightningStraighteningAngle = "lightning_straightening_angle"
-    /// OrcaSlicer's (and Creality Print's) renamed successor to ``sparseInfillAnchor``.
-    case infillAnchor = "infill_anchor"
-    /// OrcaSlicer's (and Creality Print's) renamed successor to ``sparseInfillAnchorMax``.
-    case infillAnchorMax = "infill_anchor_max"
-    case topSurfaceExpansion = "top_surface_expansion"
-    case topSurfaceExpansionMargin = "top_surface_expansion_margin"
-    case topSurfaceExpansionDirection = "top_surface_expansion_direction"
-    case alignInfillDirectionToModel = "align_infill_direction_to_model"
-    case extraSolidInfills = "extra_solid_infills"
-    case infillCombinationMaxLayerHeight = "infill_combination_max_layer_height"
-    case topBottomInfillWallOverlap = "top_bottom_infill_wall_overlap"
-    case solidInfillDirection = "solid_infill_direction"
-    case topLayerDirection = "top_layer_direction"
-    case bottomLayerDirection = "bottom_layer_direction"
-    case internalBridgeAngle = "internal_bridge_angle"
-
-    // MARK: Creality Print extensions (not recognized by vanilla Bambu Studio)
-
-    case treeSupportWallCountTree = "tree_support_wall_count_tree"
-    case supportBasePatternTree = "support_base_pattern_tree"
-    case supportInterfaceMinArea = "support_interface_min_area"
-    case treeSupportOrganicValidateRepair = "tree_support_organic_validate_repair"
-    case rotateSolidInfillDirection = "rotate_solid_infill_direction"
-    case overhangSpeedClassic = "overhang_speed_classic"
-}
-
 // MARK: - Setting values
 
-/// A typed slicer print-setting value, ready to be written into a `model_settings.config` sidecar.
-/// Construct these through the static factory methods below (e.g. `.enableSupport(true)`,
-/// `.sparseInfillDensity(15)`) rather than by hand, so each setting's value can only be constructed
-/// with the Swift type Bambu Studio actually expects for that key.
+/// A typed, slicer-agnostic print setting, ready to be lowered into the per-object config sidecars
+/// Sprue embeds in its 3MF output.
 ///
-/// Most settings are a single key/value pair. The grouped factories in `SlicerSettingGroups.swift`
-/// (e.g. `.sparseInfill(.gyroid, density: 20)`) carry several pairs in one value, which is why this
-/// stores a dictionary rather than a lone pair.
+/// Construct these through the static factory methods below (e.g. `.enableSupport(true)`,
+/// `.infillDensity(15)`) rather than by hand, so each setting's value can only be constructed with
+/// the Swift type the option actually expects.
+///
+/// Each setting carries its own lowering for both supported config flavors: Bambu Studio's
+/// `model_settings.config` (also read by OrcaSlicer, Creality Print and the other Bambu-derived
+/// vendor slicers) and PrusaSlicer's `Slic3r_PE_model.config` (also read by SuperSlicer). Either side
+/// may be empty — many options exist in only one of them, and a setting with no equivalent in a
+/// flavor contributes nothing to that flavor's file rather than being approximated.
+///
+/// A single setting can also lower to *several* keys in one flavor, either because the option is
+/// grouped differently there (``supportType(_:)`` becomes two PrusaSlicer options) or because the
+/// grouped factories in `SlicerSettingGroups.swift` (e.g. `.infill(.gyroid, density: 20)`) carry
+/// several options in one value. That's why each side is a dictionary rather than a lone pair.
+///
+/// ## Slicer support
+///
+/// A setting whose documentation carries no slicer note is understood by every slicer Sprue writes
+/// for: Bambu Studio, OrcaSlicer, Creality Print and the other Bambu-derived vendor slicers,
+/// PrusaSlicer, and SuperSlicer. Anything narrower says so in bold at the end of its description:
+///
+/// - **Bambu Studio and its forks only.** — ignored by PrusaSlicer and SuperSlicer.
+/// - **OrcaSlicer only.** / **OrcaSlicer and Creality Print.** / **Creality Print only.** — ignored
+///   by everything else, vanilla Bambu Studio included.
+///
+/// "Ignored" is literal and harmless: the option is simply left out of that slicer's config file, so
+/// the object keeps whatever the loaded print profile specifies for it. Nothing fails to open, and
+/// nothing is approximated with a neighbouring option that means something subtly different.
+///
+/// A setting can be universal while some of its *values* aren't — PrusaSlicer has no `crossHatch`
+/// infill, for instance. Those exceptions are marked case by case on the value enums, and behave the
+/// same way: an unsupported value drops the option for that slicer rather than substituting a guess.
 public struct SlicerSetting: Sendable {
-    let values: [SlicerSettingKey: String]
+    /// Keys for Bambu Studio's `model_settings.config`. May be empty.
+    let bambu: [BambuSettingKey: String]
+    /// Keys for PrusaSlicer's `Slic3r_PE_model.config`. May be empty.
+    let prusa: [PrusaSettingKey: String]
 
-    init(_ values: [SlicerSettingKey: String]) {
-        self.values = values
+    init(bambu: [BambuSettingKey: String] = [:], prusa: [PrusaSettingKey: String] = [:]) {
+        self.bambu = bambu
+        self.prusa = prusa
+    }
+}
+
+internal extension SlicerSetting {
+    /// A single pair, or nothing at all when either half is absent. Both "this flavor has no such
+    /// option" and "this parameter wasn't specified" collapse to the same thing: don't write it.
+    static func pair<Key: Hashable>(_ key: Key?, _ value: String?) -> [Key: String] {
+        guard let key, let value else { return [:] }
+        return [key: value]
     }
 
-    init(key: SlicerSettingKey, value: String) {
-        values = [key: value]
+    static func number<Value: LosslessStringConvertible>(_ value: Value?) -> String? {
+        value.map { String($0) }
     }
 
-    /// Bambu Studio writes booleans as `1`/`0`, not `true`/`false`.
-    init(key: SlicerSettingKey, value: Bool) {
-        self.init(key: key, value: value ? "1" : "0")
+    static func percent(_ value: Int?) -> String? {
+        value.map { "\($0)%" }
+    }
+
+    /// Both config formats express angles as a bare number of degrees, with no unit suffix.
+    static func degrees(_ angle: Angle?) -> String? {
+        angle.map { String($0.degrees) }
+    }
+
+    /// Degrees for the options both slicers declare as integers, rounded so the value doesn't arrive
+    /// with a fractional part their integer parsers would have to discard.
+    static func wholeDegrees(_ angle: Angle?) -> String? {
+        angle.map { String(Int($0.degrees.rounded())) }
+    }
+
+    /// Both slicers write booleans as `1`/`0`, not `true`/`false`.
+    static func flag(_ value: Bool?) -> String? {
+        value.map { $0 ? "1" : "0" }
     }
 }
 
 private extension SlicerSetting {
-    static func percent(_ key: SlicerSettingKey, _ value: Int) -> Self {
-        .init(key: key, value: "\(value)%")
+    /// One key per flavor sharing a value — the common case. A `nil` key means that flavor has no
+    /// equivalent option.
+    init(bambu bambuKey: BambuSettingKey?, prusa prusaKey: PrusaSettingKey?, _ value: String?) {
+        self.init(bambu: Self.pair(bambuKey, value), prusa: Self.pair(prusaKey, value))
+    }
+
+    /// One key per flavor with values that differ — used where the two vocabularies diverge.
+    init(
+        bambu bambuKey: BambuSettingKey?, _ bambuValue: String?,
+        prusa prusaKey: PrusaSettingKey?, _ prusaValue: String?
+    ) {
+        self.init(bambu: Self.pair(bambuKey, bambuValue), prusa: Self.pair(prusaKey, prusaValue))
+    }
+
+    /// A setting only Bambu Studio and its forks understand.
+    init(bambuOnly key: BambuSettingKey, _ value: String?) {
+        self.init(bambu: Self.pair(key, value))
     }
 }
 
@@ -291,683 +444,686 @@ public extension SlicerSetting {
 
     /// Layer height, in millimeters.
     static func layerHeight(_ millimeters: Double) -> Self {
-        .init(key: .layerHeight, value: String(millimeters))
+        .init(bambu: .layerHeight, prusa: .layerHeight, number(millimeters))
     }
 
     /// Wall printing order.
+    ///
+    /// PrusaSlicer only distinguishes inner-first from outer-first, so ``WallSequence/innerOuterInner``
+    /// is written for Bambu Studio and its forks alone.
     static func wallSequence(_ sequence: WallSequence) -> Self {
-        .init(key: .wallSequence, value: sequence.rawValue)
+        .init(
+            bambu: .wallSequence, sequence.bambuValue,
+            prusa: .externalPerimetersFirst, sequence.prusaExternalPerimetersFirstValue
+        )
     }
 
     /// Seam positioning strategy.
     static func seamPosition(_ position: SeamPosition) -> Self {
-        .init(key: .seamPosition, value: position.rawValue)
+        .init(bambu: .seamPosition, position.bambuValue, prusa: .seamPosition, position.prusaValue)
     }
 
     /// Extra distance to move the seam away from the model, as a percentage of the nozzle diameter.
+    /// **Bambu Studio and its forks only.**
     static func seamGap(_ percent: Int) -> Self {
-        .percent(.seamGap, percent)
+        .init(bambuOnly: .seamGap, Self.percent(percent))
     }
 
     /// Speed of the wipe move after retraction, as a percentage of the outer wall speed.
+    /// **Bambu Studio and its forks only.**
     static func wipeSpeed(_ percent: Int) -> Self {
-        .percent(.wipeSpeed, percent)
+        .init(bambuOnly: .wipeSpeed, Self.percent(percent))
     }
 
     /// Maximum radius of gaps closed during slicing, in millimeters.
     static func sliceClosingRadius(_ millimeters: Double) -> Self {
-        .init(key: .sliceClosingRadius, value: String(millimeters))
+        .init(bambu: .sliceClosingRadius, prusa: .sliceClosingRadius, number(millimeters))
     }
 
-    /// Slicing resolution, in millimeters.
+    /// Slicing resolution, in millimeters. **Bambu Studio and its forks only.**
+    ///
+    /// PrusaSlicer has a `resolution` option, but only as a global print setting — it can't be varied
+    /// per object, so there's nothing to write into its per-object config.
     static func resolution(_ millimeters: Double) -> Self {
-        .init(key: .resolution, value: String(millimeters))
+        .init(bambuOnly: .resolution, number(millimeters))
     }
 
     /// XY compensation applied to holes, in millimeters (positive values enlarge holes).
-    static func xyHoleCompensation(_ millimeters: Double) -> Self {
-        .init(key: .xyHoleCompensation, value: String(millimeters))
+    /// **Bambu Studio and its forks only.**
+    ///
+    /// PrusaSlicer has no separate hole compensation — its single `xy_size_compensation` is written
+    /// by ``contourCompensation(_:)`` instead.
+    static func holeCompensation(_ millimeters: Double) -> Self {
+        .init(bambuOnly: .xyHoleCompensation, number(millimeters))
     }
 
     /// XY compensation applied to outer contours, in millimeters (positive values shrink the part).
-    static func xyContourCompensation(_ millimeters: Double) -> Self {
-        .init(key: .xyContourCompensation, value: String(millimeters))
+    static func contourCompensation(_ millimeters: Double) -> Self {
+        .init(bambu: .xyContourCompensation, prusa: .xySizeCompensation, number(millimeters))
     }
 
     /// Elephant foot compensation, in millimeters.
     static func elephantFootCompensation(_ millimeters: Double) -> Self {
-        .init(key: .elephantFootCompensation, value: String(millimeters))
+        .init(bambu: .elephantFootCompensation, prusa: .elephantFootCompensation, number(millimeters))
     }
 
     /// Whether to use precise Z height, ignoring the printer's layer height rounding.
+    /// **Bambu Studio and its forks only.**
     static func preciseZHeight(_ value: Bool) -> Self {
-        .init(key: .preciseZHeight, value: value)
+        .init(bambuOnly: .preciseZHeight, flag(value))
     }
 
     // MARK: Support & adhesion
 
     /// Brim generation strategy.
+    ///
+    /// ``BrimType/auto`` and ``BrimType/painted`` have no PrusaSlicer equivalent and are written for
+    /// Bambu Studio and its forks alone; the remaining cases are understood everywhere.
     static func brimType(_ type: BrimType) -> Self {
-        .init(key: .brimType, value: type.rawValue)
+        .init(bambu: .brimType, type.bambuValue, prusa: .brimType, type.prusaValue)
     }
 
     /// Brim width, in millimeters.
     static func brimWidth(_ millimeters: Double) -> Self {
-        .init(key: .brimWidth, value: String(millimeters))
+        .init(bambu: .brimWidth, prusa: .brimWidth, number(millimeters))
     }
 
     /// Gap left between the brim and the object, in millimeters.
     static func brimObjectGap(_ millimeters: Double) -> Self {
-        .init(key: .brimObjectGap, value: String(millimeters))
+        .init(bambu: .brimObjectGap, prusa: .brimSeparation, number(millimeters))
     }
 
     /// Whether support material is generated for this object.
     static func enableSupport(_ value: Bool) -> Self {
-        .init(key: .enableSupport, value: value)
+        .init(bambu: .enableSupport, prusa: .supportMaterial, flag(value))
     }
 
     /// Support generation algorithm.
     static func supportType(_ type: SupportType) -> Self {
-        .init(key: .supportType, value: type.rawValue)
+        .init(
+            bambu: Self.pair(.supportType, type.bambuValue),
+            prusa: Self.pair(.supportMaterialStyle, type.prusaStyleValue)
+                .merging(Self.pair(.supportMaterialAuto, flag(type.isAutomatic))) { current, _ in current }
+        )
     }
 
-    /// Overhang threshold angle (from vertical) that triggers support generation, in degrees.
-    static func supportThresholdAngle(_ degrees: Int) -> Self {
-        .init(key: .supportThresholdAngle, value: String(degrees))
+    /// Overhang threshold angle, measured from vertical, that triggers support generation.
+    static func supportThresholdAngle(_ angle: Angle) -> Self {
+        .init(bambu: .supportThresholdAngle, prusa: .supportMaterialThreshold, wholeDegrees(angle))
     }
 
     /// Whether support is only generated where it touches the build plate.
     static func supportOnBuildPlateOnly(_ value: Bool) -> Self {
-        .init(key: .supportOnBuildPlateOnly, value: value)
+        .init(bambu: .supportOnBuildPlateOnly, prusa: .supportMaterialBuildplateOnly, flag(value))
     }
 
     /// The (1-based) extruder used to print support.
     static func supportFilament(_ number: Int) -> Self {
-        .init(key: .supportFilament, value: String(number))
+        .init(bambu: .supportFilament, prusa: .supportMaterialExtruder, Self.number(number))
     }
 
     /// The (1-based) extruder used to print the support interface.
     static func supportInterfaceFilament(_ number: Int) -> Self {
-        .init(key: .supportInterfaceFilament, value: String(number))
+        .init(bambu: .supportInterfaceFilament, prusa: .supportMaterialInterfaceExtruder, Self.number(number))
     }
 
     /// Horizontal expansion applied to support relative to the model, in millimeters.
+    /// **Bambu Studio and its forks only.**
     static func supportExpansion(_ millimeters: Double) -> Self {
-        .init(key: .supportExpansion, value: String(millimeters))
+        .init(bambuOnly: .supportExpansion, number(millimeters))
     }
 
     /// Support structure style.
+    ///
+    /// PrusaSlicer has a coarser vocabulary here: Bambu's three tuned tree variants all become its
+    /// single `tree`, and ``SupportStyle/default`` is written for Bambu Studio and its forks alone.
     static func supportStyle(_ style: SupportStyle) -> Self {
-        .init(key: .supportStyle, value: style.rawValue)
+        .init(bambu: .supportStyle, style.bambuValue, prusa: .supportMaterialStyle, style.prusaValue)
     }
 
-    /// Tree support branch angle, in degrees.
-    static func treeSupportBranchAngle(_ degrees: Double) -> Self {
-        .init(key: .treeSupportBranchAngle, value: String(degrees))
+    /// Tree support branch angle.
+    static func treeSupportBranchAngle(_ angle: Angle) -> Self {
+        .init(bambu: .treeSupportBranchAngle, prusa: .supportTreeAngle, degrees(angle))
     }
 
     /// Number of walls supporting the branches of a tree support.
+    /// **Bambu Studio and its forks only.**
     static func treeSupportWallCount(_ count: Int) -> Self {
-        .init(key: .treeSupportWallCount, value: String(count))
+        .init(bambuOnly: .treeSupportWallCount, number(count))
     }
 
-    /// Angle at which tree support branches increase in diameter, in degrees.
-    static func treeSupportBranchDiameterAngle(_ degrees: Double) -> Self {
-        .init(key: .treeSupportBranchDiameterAngle, value: String(degrees))
+    /// Angle at which tree support branches increase in diameter.
+    static func treeSupportBranchDiameterAngle(_ angle: Angle) -> Self {
+        .init(bambu: .treeSupportBranchDiameterAngle, prusa: .supportTreeBranchDiameterAngle, degrees(angle))
     }
 
     /// Vertical gap between the top of support and the model above it, in millimeters.
     static func supportTopZDistance(_ millimeters: Double) -> Self {
-        .init(key: .supportTopZDistance, value: String(millimeters))
+        .init(bambu: .supportTopZDistance, prusa: .supportMaterialContactDistance, number(millimeters))
     }
 
     /// Vertical gap between the model and the support below it, in millimeters.
     static func supportBottomZDistance(_ millimeters: Double) -> Self {
-        .init(key: .supportBottomZDistance, value: String(millimeters))
+        .init(bambu: .supportBottomZDistance, prusa: .supportMaterialBottomContactDistance, number(millimeters))
     }
 
     /// Support base (interface/raft-like) fill pattern.
+    ///
+    /// ``SupportBasePattern/default``, ``SupportBasePattern/lightning`` and
+    /// ``SupportBasePattern/hollow`` are written for Bambu Studio and its forks alone.
     static func supportBasePattern(_ pattern: SupportBasePattern) -> Self {
-        .init(key: .supportBasePattern, value: pattern.rawValue)
+        .init(bambu: .supportBasePattern, pattern.bambuValue, prusa: .supportMaterialPattern, pattern.prusaValue)
     }
 
     /// Spacing between lines of the support base pattern, in millimeters.
     static func supportBasePatternSpacing(_ millimeters: Double) -> Self {
-        .init(key: .supportBasePatternSpacing, value: String(millimeters))
+        .init(bambu: .supportBasePatternSpacing, prusa: .supportMaterialSpacing, number(millimeters))
     }
 
     /// Number of solid support interface layers, at the top of the support.
     static func supportInterfaceTopLayers(_ count: Int) -> Self {
-        .init(key: .supportInterfaceTopLayers, value: String(count))
+        .init(bambu: .supportInterfaceTopLayers, prusa: .supportMaterialInterfaceLayers, number(count))
     }
 
     /// Number of solid support interface layers, at the bottom of the support.
     static func supportInterfaceBottomLayers(_ count: Int) -> Self {
-        .init(key: .supportInterfaceBottomLayers, value: String(count))
+        .init(bambu: .supportInterfaceBottomLayers, prusa: .supportMaterialBottomInterfaceLayers, number(count))
     }
 
     /// Spacing between lines of the support interface, in millimeters.
     static func supportInterfaceSpacing(_ millimeters: Double) -> Self {
-        .init(key: .supportInterfaceSpacing, value: String(millimeters))
+        .init(bambu: .supportInterfaceSpacing, prusa: .supportMaterialInterfaceSpacing, number(millimeters))
     }
 
     /// Spacing between lines of the bottom support interface, in millimeters.
+    /// **Bambu Studio and its forks only.**
+    ///
+    /// PrusaSlicer uses one spacing for both interfaces; ``supportInterfaceSpacing(_:)`` sets it.
     static func supportBottomInterfaceSpacing(_ millimeters: Double) -> Self {
-        .init(key: .supportBottomInterfaceSpacing, value: String(millimeters))
+        .init(bambuOnly: .supportBottomInterfaceSpacing, number(millimeters))
     }
 
     /// Horizontal clearance between support and the model, in millimeters.
     static func supportObjectXYDistance(_ millimeters: Double) -> Self {
-        .init(key: .supportObjectXYDistance, value: String(millimeters))
+        .init(bambu: .supportObjectXYDistance, prusa: .supportMaterialXYSpacing, number(millimeters))
     }
 
     /// Whether to disable support generation under bridges.
     static func bridgeNoSupport(_ value: Bool) -> Self {
-        .init(key: .bridgeNoSupport, value: value)
+        .init(bambu: .bridgeNoSupport, prusa: .dontSupportBridges, flag(value))
     }
 
     /// Maximum bridge length printed without support, in millimeters.
+    /// **Bambu Studio and its forks only.**
     static func maxBridgeLength(_ millimeters: Double) -> Self {
-        .init(key: .maxBridgeLength, value: String(millimeters))
+        .init(bambuOnly: .maxBridgeLength, number(millimeters))
     }
 
     /// Whether support is only generated for critical (large, unsupported) regions.
+    /// **Bambu Studio and its forks only.**
     static func supportCriticalRegionsOnly(_ value: Bool) -> Self {
-        .init(key: .supportCriticalRegionsOnly, value: value)
+        .init(bambuOnly: .supportCriticalRegionsOnly, flag(value))
     }
 
     /// Whether small overhang areas are excluded from support generation.
+    /// **Bambu Studio and its forks only.**
     static func supportRemoveSmallOverhang(_ value: Bool) -> Self {
-        .init(key: .supportRemoveSmallOverhang, value: value)
+        .init(bambuOnly: .supportRemoveSmallOverhang, flag(value))
     }
 
     /// Extra gap between the object's first layer and support, in millimeters.
+    /// **Bambu Studio and its forks only.**
     static func supportObjectFirstLayerGap(_ millimeters: Double) -> Self {
-        .init(key: .supportObjectFirstLayerGap, value: String(millimeters))
+        .init(bambuOnly: .supportObjectFirstLayerGap, number(millimeters))
     }
 
     // MARK: Ironing
 
     /// Ironing mode applied to top surfaces.
+    ///
+    /// On the PrusaSlicer side this also writes the separate `ironing` flag that turns the feature on
+    /// or off, since it has no "no ironing" mode of its own.
     static func ironingType(_ type: IroningType) -> Self {
-        .init(key: .ironingType, value: type.rawValue)
+        .init(
+            bambu: Self.pair(.ironingType, type.bambuValue),
+            prusa: Self.pair(.ironingType, type.prusaValue)
+                .merging(Self.pair(.ironing, flag(type != .noIroning))) { current, _ in current }
+        )
     }
 
     /// Flow rate ratio used while ironing, as a whole-number percentage.
     static func ironingFlow(_ percent: Int) -> Self {
-        .percent(.ironingFlow, percent)
+        .init(bambu: .ironingFlow, prusa: .ironingFlowrate, Self.percent(percent))
     }
 
     /// Spacing between ironing passes, in millimeters.
     static func ironingSpacing(_ millimeters: Double) -> Self {
-        .init(key: .ironingSpacing, value: String(millimeters))
+        .init(bambu: .ironingSpacing, prusa: .ironingSpacing, number(millimeters))
     }
 
     /// Distance ironing is inset from the perimeter, in millimeters.
+    /// **Bambu Studio and its forks only.**
     static func ironingInset(_ millimeters: Double) -> Self {
-        .init(key: .ironingInset, value: String(millimeters))
+        .init(bambuOnly: .ironingInset, number(millimeters))
     }
 
     /// Ironing speed, in millimeters per second.
     static func ironingSpeed(_ millimetersPerSecond: Double) -> Self {
-        .init(key: .ironingSpeed, value: String(millimetersPerSecond))
+        .init(bambu: .ironingSpeed, prusa: .ironingSpeed, number(millimetersPerSecond))
     }
 
-    /// Ironing line direction, in degrees.
-    static func ironingDirection(_ degrees: Double) -> Self {
-        .init(key: .ironingDirection, value: String(degrees))
+    /// Ironing line direction.
+    /// **Bambu Studio and its forks only.**
+    static func ironingDirection(_ angle: Angle) -> Self {
+        .init(bambuOnly: .ironingDirection, degrees(angle))
     }
 
     // MARK: Strength / infill
 
     /// Number of perimeter walls.
-    static func wallLoops(_ count: Int) -> Self {
-        .init(key: .wallLoops, value: String(count))
+    static func wallCount(_ count: Int) -> Self {
+        .init(bambu: .wallLoops, prusa: .perimeters, number(count))
     }
 
     /// Number of solid top layers.
     static func topShellLayers(_ count: Int) -> Self {
-        .init(key: .topShellLayers, value: String(count))
+        .init(bambu: .topShellLayers, prusa: .topSolidLayers, number(count))
     }
 
     /// Minimum thickness of solid top shell, in millimeters (adds layers beyond `topShellLayers` if needed).
     static func topShellThickness(_ millimeters: Double) -> Self {
-        .init(key: .topShellThickness, value: String(millimeters))
+        .init(bambu: .topShellThickness, prusa: .topSolidMinThickness, number(millimeters))
     }
 
     /// Number of solid bottom layers.
     static func bottomShellLayers(_ count: Int) -> Self {
-        .init(key: .bottomShellLayers, value: String(count))
+        .init(bambu: .bottomShellLayers, prusa: .bottomSolidLayers, number(count))
     }
 
     /// Minimum thickness of solid bottom shell, in millimeters (adds layers beyond `bottomShellLayers` if needed).
     static func bottomShellThickness(_ millimeters: Double) -> Self {
-        .init(key: .bottomShellThickness, value: String(millimeters))
+        .init(bambu: .bottomShellThickness, prusa: .bottomSolidMinThickness, number(millimeters))
     }
 
-    /// Sparse (infill) density, as a whole-number percentage (e.g. `15` for 15%).
-    static func sparseInfillDensity(_ percent: Int) -> Self {
-        .percent(.sparseInfillDensity, percent)
+    /// Sparse infill density, as a whole-number percentage (e.g. `15` for 15%).
+    static func infillDensity(_ percent: Int) -> Self {
+        .init(bambu: .sparseInfillDensity, prusa: .fillDensity, Self.percent(percent))
     }
 
-    /// Sparse (infill) pattern.
-    static func sparseInfillPattern(_ pattern: InfillPattern) -> Self {
-        .init(key: .sparseInfillPattern, value: pattern.rawValue)
+    /// Sparse infill pattern.
+    ///
+    /// A handful of patterns exist in only one slicer family — see ``InfillPattern`` — and are
+    /// written only for the family that has them.
+    static func infillPattern(_ pattern: InfillPattern) -> Self {
+        .init(bambu: .sparseInfillPattern, pattern.bambuValue, prusa: .fillPattern, pattern.prusaValue)
     }
 
     /// Length of the infill anchor along the perimeter, in millimeters.
     ///
-    /// Bambu Studio also accepts a percentage for this option; use ``raw(_:_:)`` (e.g.
-    /// `.raw(.sparseInfillAnchor, "50%")`) if you need that form.
-    static func sparseInfillAnchor(_ millimeters: Double) -> Self {
-        .init(key: .sparseInfillAnchor, value: String(millimeters))
+    /// Bambu Studio renamed this option in its forks, so both spellings are written for that flavor —
+    /// each fork reads the one it knows and ignores the other.
+    ///
+    /// All three slicers also accept a percentage here; use ``raw(bambu:_:)``/``raw(prusa:_:)`` if
+    /// you need that form.
+    static func infillAnchor(_ millimeters: Double) -> Self {
+        .init(
+            bambu: [.sparseInfillAnchor: String(millimeters), .infillAnchor: String(millimeters)],
+            prusa: [.infillAnchor: String(millimeters)]
+        )
     }
 
-    /// Maximum length of the infill anchor along the perimeter, in millimeters.
-    ///
-    /// Bambu Studio also accepts a percentage for this option; use ``raw(_:_:)`` (e.g.
-    /// `.raw(.sparseInfillAnchorMax, "50%")`) if you need that form.
-    static func sparseInfillAnchorMax(_ millimeters: Double) -> Self {
-        .init(key: .sparseInfillAnchorMax, value: String(millimeters))
+    /// Maximum length of the infill anchor along the perimeter, in millimeters. See
+    /// ``infillAnchor(_:)`` for the double-spelling and percentage notes.
+    static func infillAnchorMax(_ millimeters: Double) -> Self {
+        .init(
+            bambu: [.sparseInfillAnchorMax: String(millimeters), .infillAnchorMax: String(millimeters)],
+            prusa: [.infillAnchorMax: String(millimeters)]
+        )
     }
 
     /// Top surface fill pattern. Only a subset of ``InfillPattern`` applies here — see its documentation.
     static func topSurfacePattern(_ pattern: InfillPattern) -> Self {
-        .init(key: .topSurfacePattern, value: pattern.rawValue)
+        .init(bambu: .topSurfacePattern, pattern.bambuValue, prusa: .topFillPattern, pattern.prusaValue)
     }
 
     /// Bottom surface fill pattern. Only a subset of ``InfillPattern`` applies here — see its documentation.
     static func bottomSurfacePattern(_ pattern: InfillPattern) -> Self {
-        .init(key: .bottomSurfacePattern, value: pattern.rawValue)
+        .init(bambu: .bottomSurfacePattern, pattern.bambuValue, prusa: .bottomFillPattern, pattern.prusaValue)
     }
 
-    /// Internal solid infill pattern. Only a subset of ``InfillPattern`` applies here — see its documentation.
+    /// Internal solid infill pattern. Only a subset of ``InfillPattern`` applies here — see its
+    /// documentation. **Bambu Studio and its forks only.**
+    ///
+    /// PrusaSlicer has no separate pattern for internal solid infill; it uses the sparse infill
+    /// pattern from ``infillPattern(_:)`` for solid regions too.
     static func internalSolidInfillPattern(_ pattern: InfillPattern) -> Self {
-        .init(key: .internalSolidInfillPattern, value: pattern.rawValue)
+        .init(bambuOnly: .internalSolidInfillPattern, pattern.bambuValue)
     }
 
     /// Whether sparse infill is combined across multiple layers to reduce print time.
+    /// **Bambu Studio and its forks only.**
+    ///
+    /// PrusaSlicer's equivalent takes a layer count rather than a flag; use
+    /// ``raw(prusa:_:)`` with ``PrusaSettingKey/infillEveryLayers`` to set it.
     static func infillCombination(_ value: Bool) -> Self {
-        .init(key: .infillCombination, value: value)
+        .init(bambuOnly: .infillCombination, flag(value))
     }
 
     /// Overlap between infill and walls, as a whole-number percentage of the extrusion width.
     static func infillWallOverlap(_ percent: Int) -> Self {
-        .percent(.infillWallOverlap, percent)
+        .init(bambu: .infillWallOverlap, prusa: .infillOverlap, Self.percent(percent))
     }
 
-    /// Infill line direction, in degrees.
-    static func infillDirection(_ degrees: Double) -> Self {
-        .init(key: .infillDirection, value: String(degrees))
+    /// Infill line direction.
+    static func infillDirection(_ angle: Angle) -> Self {
+        .init(bambu: .infillDirection, prusa: .fillAngle, degrees(angle))
     }
 
-    /// Angle used for bridge infill, in degrees.
-    static func bridgeAngle(_ degrees: Double) -> Self {
-        .init(key: .bridgeAngle, value: String(degrees))
+    /// Angle used for bridge infill.
+    static func bridgeAngle(_ angle: Angle) -> Self {
+        .init(bambu: .bridgeAngle, prusa: .bridgeAngle, degrees(angle))
     }
 
     /// Below this area, in square millimeters, sparse infill regions are filled solid instead.
     static func minimumSparseInfillArea(_ squareMillimeters: Double) -> Self {
-        .init(key: .minimumSparseInfillArea, value: String(squareMillimeters))
+        .init(bambu: .minimumSparseInfillArea, prusa: .solidInfillBelowArea, number(squareMillimeters))
     }
 
     // MARK: Multi-material
 
     /// The (1-based) extruder this object is assigned to print with.
     static func extruder(_ number: Int) -> Self {
-        .init(key: .extruder, value: String(number))
+        .init(bambu: .extruder, prusa: .extruder, Self.number(number))
     }
 
     /// Whether filament purged before printing this object can be flushed into its own infill.
     static func flushIntoInfill(_ value: Bool) -> Self {
-        .init(key: .flushIntoInfill, value: value)
+        .init(bambu: .flushIntoInfill, prusa: .wipeIntoInfill, flag(value))
     }
 
     /// Whether filament purged before printing this object can be flushed into other objects.
     static func flushIntoObjects(_ value: Bool) -> Self {
-        .init(key: .flushIntoObjects, value: value)
+        .init(bambu: .flushIntoObjects, prusa: .wipeIntoObjects, flag(value))
     }
 
     /// Whether filament purged before printing this object can be flushed into support.
+    /// **Bambu Studio and its forks only.**
     static func flushIntoSupport(_ value: Bool) -> Self {
-        .init(key: .flushIntoSupport, value: value)
+        .init(bambuOnly: .flushIntoSupport, flag(value))
     }
 
-    /// A raw key/value pair, for slicer options not covered by a named case above.
-    static func raw(_ key: SlicerSettingKey, _ value: String) -> Self {
-        .init(key: key, value: value)
+    // MARK: Escape hatches
+
+    /// A raw key/value pair written only into Bambu Studio's config, for options with no factory above.
+    static func raw(bambu key: BambuSettingKey, _ value: String) -> Self {
+        .init(bambu: [key: value])
+    }
+
+    /// A raw key/value pair written only into PrusaSlicer's config, for options with no factory above.
+    ///
+    /// - Warning: PrusaSlicer refuses to open a 3MF containing an option key it doesn't know. See
+    ///   ``PrusaSettingKey`` before reaching for `PrusaSettingKey(rawValue:)`.
+    static func raw(prusa key: PrusaSettingKey, _ value: String) -> Self {
+        .init(prusa: [key: value])
     }
 }
 
 // MARK: - OrcaSlicer extensions
 
-/// Settings recognized by OrcaSlicer but not vanilla Bambu Studio. Several of these (noted below) are
-/// also recognized by Creality Print, which inherited them from Orca; genuinely Creality-only settings
-/// are in a separate extension.
+/// Settings recognized by OrcaSlicer but not vanilla Bambu Studio, and by neither PrusaSlicer nor
+/// SuperSlicer. Several of these (noted below) are also recognized by Creality Print, which inherited
+/// them from Orca; genuinely Creality-only settings are in a separate extension.
 public extension SlicerSetting {
-    /// Overhang angle (from vertical) beyond which walls are made printable without support, in
-    /// degrees. **OrcaSlicer only.**
-    static func makeOverhangPrintableAngle(_ degrees: Double) -> Self {
-        .init(key: .makeOverhangPrintableAngle, value: String(degrees))
+    /// Overhang angle, measured from vertical, beyond which walls are made printable without support.
+    /// **OrcaSlicer only.**
+    static func makeOverhangPrintableAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .makeOverhangPrintableAngle, degrees(angle))
     }
 
     /// Maximum size of a hole that "make overhang printable" will fill in, in millimeters.
     /// **OrcaSlicer only.**
     static func makeOverhangPrintableHoleSize(_ millimeters: Double) -> Self {
-        .init(key: .makeOverhangPrintableHoleSize, value: String(millimeters))
+        .init(bambuOnly: .makeOverhangPrintableHoleSize, number(millimeters))
     }
 
     /// Whether steep overhangs are reworked so they can be printed without support. **OrcaSlicer only.**
     static func makeOverhangPrintable(_ value: Bool) -> Self {
-        .init(key: .makeOverhangPrintable, value: value)
+        .init(bambuOnly: .makeOverhangPrintable, flag(value))
     }
 
     /// Flow ratio used for the brim, relative to the normal flow. **OrcaSlicer only.**
     static func brimFlowRatio(_ ratio: Double) -> Self {
-        .init(key: .brimFlowRatio, value: String(ratio))
+        .init(bambuOnly: .brimFlowRatio, number(ratio))
     }
 
     /// Whether the brim follows the elephant-foot-compensated outline instead of the nominal one.
     /// **OrcaSlicer only.**
     static func brimUseEfcOutline(_ value: Bool) -> Self {
-        .init(key: .brimUseEfcOutline, value: value)
+        .init(bambuOnly: .brimUseEfcOutline, flag(value))
     }
 
     /// Overlap fraction, as a whole-number percentage, needed before an overhang triggers support.
     /// **OrcaSlicer only.**
     static func supportThresholdOverlap(_ percent: Int) -> Self {
-        .percent(.supportThresholdOverlap, percent)
+        .init(bambuOnly: .supportThresholdOverlap, Self.percent(percent))
     }
 
     /// Brim width around tree supports, in millimeters. **OrcaSlicer and Creality Print.**
     static func treeSupportBrimWidth(_ millimeters: Double) -> Self {
-        .init(key: .treeSupportBrimWidth, value: String(millimeters))
+        .init(bambuOnly: .treeSupportBrimWidth, number(millimeters))
     }
 
-    /// Branch angle for organic-style tree supports, in degrees. **OrcaSlicer and Creality Print.**
-    static func treeSupportBranchAngleOrganic(_ degrees: Double) -> Self {
-        .init(key: .treeSupportBranchAngleOrganic, value: String(degrees))
+    /// Branch angle for organic-style tree supports. **OrcaSlicer and Creality Print.**
+    static func treeSupportBranchAngleOrganic(_ angle: Angle) -> Self {
+        .init(bambuOnly: .treeSupportBranchAngleOrganic, degrees(angle))
     }
 
     /// Flow ratio used for bridges, relative to the normal flow. **OrcaSlicer and Creality Print.**
     static func bridgeFlow(_ ratio: Double) -> Self {
-        .init(key: .bridgeFlow, value: String(ratio))
+        .init(bambuOnly: .bridgeFlow, number(ratio))
     }
 
     /// Density of bridge infill, as a whole-number percentage. **OrcaSlicer and Creality Print.**
     static func bridgeDensity(_ percent: Int) -> Self {
-        .percent(.bridgeDensity, percent)
+        .init(bambuOnly: .bridgeDensity, Self.percent(percent))
     }
 
     /// Extra flow applied while ironing, in addition to `ironingFlow`. **OrcaSlicer only.**
     static func ironingExpansion(_ millimeters: Double) -> Self {
-        .init(key: .ironingExpansion, value: String(millimeters))
+        .init(bambuOnly: .ironingExpansion, number(millimeters))
     }
 
     /// Whether Z-layer contouring ("Z anti-aliasing") is enabled — reduces the height of top-surface
     /// perimeters to more closely match the model's true edge height. **OrcaSlicer only.**
     static func zContouringEnabled(_ value: Bool) -> Self {
-        .init(key: .zContouringEnabled, value: value)
+        .init(bambuOnly: .zContouringEnabled, flag(value))
     }
 
-    /// Under Z-layer contouring, perimeters sloped less steeply than this angle (in degrees) have
-    /// their height reduced to match the model's edge. `0` disables this. **OrcaSlicer only.**
-    static func zContouringMinimizeWallHeightAngle(_ degrees: Double) -> Self {
-        .init(key: .zContouringMinimizeWallHeightAngle, value: String(degrees))
+    /// Under Z-layer contouring, perimeters sloped less steeply than this angle have their height
+    /// reduced to match the model's edge. `0°` disables this. **OrcaSlicer only.**
+    static func zContouringMinimizeWallHeightAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .zContouringMinimizeWallHeightAngle, degrees(angle))
     }
 
     /// Whether Z-layer contouring skips alternating its fill direction between layers.
     /// **OrcaSlicer only.**
     static func zContouringDisableAlternatingFillDirection(_ value: Bool) -> Self {
-        .init(key: .zContouringDisableAlternatingFillDirection, value: value)
+        .init(bambuOnly: .zContouringDisableAlternatingFillDirection, flag(value))
     }
 
     /// Minimum Z-layer height used by Z-layer contouring, in millimeters. Also controls the slicing
     /// plane. **OrcaSlicer only.**
     static func zContouringMinimumZHeight(_ millimeters: Double) -> Self {
-        .init(key: .zContouringMinimumZHeight, value: String(millimeters))
+        .init(bambuOnly: .zContouringMinimumZHeight, number(millimeters))
     }
 
     /// Density of the top surface's solid infill, as a whole-number percentage. **OrcaSlicer only.**
     static func topSurfaceDensity(_ percent: Int) -> Self {
-        .percent(.topSurfaceDensity, percent)
+        .init(bambuOnly: .topSurfaceDensity, Self.percent(percent))
     }
 
     /// Density of the bottom surface's solid infill, as a whole-number percentage. **OrcaSlicer only.**
     static func bottomSurfaceDensity(_ percent: Int) -> Self {
-        .percent(.bottomSurfaceDensity, percent)
+        .init(bambuOnly: .bottomSurfaceDensity, Self.percent(percent))
     }
 
     /// Number of lines used per pass for infill patterns that support multi-line infill (1–10).
     /// **OrcaSlicer only.**
     static func fillMultiline(_ count: Int) -> Self {
-        .init(key: .fillMultiline, value: String(count))
+        .init(bambuOnly: .fillMultiline, number(count))
     }
 
-    /// Angle of the first set of lattice infill elements in the Z direction, in degrees (zero is
-    /// vertical). **OrcaSlicer only.**
-    static func lateralLatticeAngle1(_ degrees: Double) -> Self {
-        .init(key: .lateralLatticeAngle1, value: String(degrees))
+    /// Angle of the first set of lattice infill elements in the Z direction (zero is vertical).
+    /// **OrcaSlicer only.**
+    static func lateralLatticeAngle1(_ angle: Angle) -> Self {
+        .init(bambuOnly: .lateralLatticeAngle1, degrees(angle))
     }
 
-    /// Angle of the second set of lattice infill elements in the Z direction, in degrees (zero is
-    /// vertical). **OrcaSlicer only.**
-    static func lateralLatticeAngle2(_ degrees: Double) -> Self {
-        .init(key: .lateralLatticeAngle2, value: String(degrees))
+    /// Angle of the second set of lattice infill elements in the Z direction (zero is vertical).
+    /// **OrcaSlicer only.**
+    static func lateralLatticeAngle2(_ angle: Angle) -> Self {
+        .init(bambuOnly: .lateralLatticeAngle2, degrees(angle))
     }
 
-    /// Angle of infill's angled lines, in degrees (60° produces a pure honeycomb). **OrcaSlicer only.**
-    static func infillOverhangAngle(_ degrees: Double) -> Self {
-        .init(key: .infillOverhangAngle, value: String(degrees))
+    /// Angle of infill's angled lines (60° produces a pure honeycomb). **OrcaSlicer only.**
+    static func infillOverhangAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .infillOverhangAngle, degrees(angle))
     }
 
-    /// Overhang angle used by lightning infill, in degrees. **OrcaSlicer only.**
-    static func lightningOverhangAngle(_ degrees: Double) -> Self {
-        .init(key: .lightningOverhangAngle, value: String(degrees))
+    /// Overhang angle used by lightning infill. **OrcaSlicer only.**
+    static func lightningOverhangAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .lightningOverhangAngle, degrees(angle))
     }
 
-    /// Branch-pruning angle used by lightning infill, in degrees. **OrcaSlicer only.**
-    static func lightningPruneAngle(_ degrees: Double) -> Self {
-        .init(key: .lightningPruneAngle, value: String(degrees))
+    /// Branch-pruning angle used by lightning infill. **OrcaSlicer only.**
+    static func lightningPruneAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .lightningPruneAngle, degrees(angle))
     }
 
-    /// Branch-straightening angle used by lightning infill, in degrees. **OrcaSlicer only.**
-    static func lightningStraighteningAngle(_ degrees: Double) -> Self {
-        .init(key: .lightningStraighteningAngle, value: String(degrees))
-    }
-
-    /// Length of the infill anchor along the perimeter, in millimeters. The renamed successor to
-    /// ``sparseInfillAnchor(_:)``. **OrcaSlicer and Creality Print.**
-    ///
-    /// Also accepts a percentage; use ``raw(_:_:)`` (e.g. `.raw(.infillAnchor, "50%")`) for that form.
-    static func infillAnchor(_ millimeters: Double) -> Self {
-        .init(key: .infillAnchor, value: String(millimeters))
-    }
-
-    /// Maximum length of the infill anchor along the perimeter, in millimeters. The renamed successor
-    /// to ``sparseInfillAnchorMax(_:)``. **OrcaSlicer and Creality Print.**
-    ///
-    /// Also accepts a percentage; use ``raw(_:_:)`` (e.g. `.raw(.infillAnchorMax, "50%")`) for that form.
-    static func infillAnchorMax(_ millimeters: Double) -> Self {
-        .init(key: .infillAnchorMax, value: String(millimeters))
+    /// Branch-straightening angle used by lightning infill. **OrcaSlicer only.**
+    static func lightningStraighteningAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .lightningStraighteningAngle, degrees(angle))
     }
 
     /// Distance the top surface is expanded outward to merge small gaps, in millimeters.
     /// **OrcaSlicer only.**
     static func topSurfaceExpansion(_ millimeters: Double) -> Self {
-        .init(key: .topSurfaceExpansion, value: String(millimeters))
+        .init(bambuOnly: .topSurfaceExpansion, number(millimeters))
     }
 
     /// Margin used while computing top surface expansion, in millimeters. **OrcaSlicer only.**
     static func topSurfaceExpansionMargin(_ millimeters: Double) -> Self {
-        .init(key: .topSurfaceExpansionMargin, value: String(millimeters))
+        .init(bambuOnly: .topSurfaceExpansionMargin, number(millimeters))
     }
 
     /// Direction top surface expansion grows in. **OrcaSlicer only.**
     static func topSurfaceExpansionDirection(_ direction: TopSurfaceExpansionDirection) -> Self {
-        .init(key: .topSurfaceExpansionDirection, value: direction.rawValue)
+        .init(bambuOnly: .topSurfaceExpansionDirection, direction.rawValue)
     }
 
     /// Whether solid infill direction rotates to align with the model rather than staying fixed.
     /// **OrcaSlicer only.**
     static func alignInfillDirectionToModel(_ value: Bool) -> Self {
-        .init(key: .alignInfillDirectionToModel, value: value)
+        .init(bambuOnly: .alignInfillDirectionToModel, flag(value))
     }
 
     /// Inserts solid infill at specific layers. Accepts `"N"` (every Nth layer), `"N#K"` (K consecutive
     /// solid layers every N layers), or a comma-separated explicit layer list (e.g. `"1,7,9"`; layers
     /// are 1-based). **OrcaSlicer only.**
     static func extraSolidInfills(_ spec: String) -> Self {
-        .init(key: .extraSolidInfills, value: spec)
+        .init(bambuOnly: .extraSolidInfills, spec)
     }
 
     /// Maximum combined layer height when combining sparse infill across multiple layers, in
     /// millimeters. **OrcaSlicer only.**
     ///
-    /// Also accepts a percentage; use ``raw(_:_:)`` for that form.
+    /// Also accepts a percentage; use ``raw(bambu:_:)`` for that form.
     static func infillCombinationMaxLayerHeight(_ millimeters: Double) -> Self {
-        .init(key: .infillCombinationMaxLayerHeight, value: String(millimeters))
+        .init(bambuOnly: .infillCombinationMaxLayerHeight, number(millimeters))
     }
 
     /// Overlap between infill and the top/bottom solid shell, as a whole-number percentage.
     /// **OrcaSlicer and Creality Print.**
     static func topBottomInfillWallOverlap(_ percent: Int) -> Self {
-        .percent(.topBottomInfillWallOverlap, percent)
+        .init(bambuOnly: .topBottomInfillWallOverlap, Self.percent(percent))
     }
 
-    /// Solid infill line direction, in degrees. **OrcaSlicer and Creality Print.**
-    static func solidInfillDirection(_ degrees: Double) -> Self {
-        .init(key: .solidInfillDirection, value: String(degrees))
+    /// Solid infill line direction. **OrcaSlicer and Creality Print.**
+    static func solidInfillDirection(_ angle: Angle) -> Self {
+        .init(bambuOnly: .solidInfillDirection, degrees(angle))
     }
 
-    /// Top solid layer line direction, in degrees. **OrcaSlicer only.**
-    static func topLayerDirection(_ degrees: Double) -> Self {
-        .init(key: .topLayerDirection, value: String(degrees))
+    /// Top solid layer line direction. **OrcaSlicer only.**
+    static func topLayerDirection(_ angle: Angle) -> Self {
+        .init(bambuOnly: .topLayerDirection, degrees(angle))
     }
 
-    /// Bottom solid layer line direction, in degrees. **OrcaSlicer only.**
-    static func bottomLayerDirection(_ degrees: Double) -> Self {
-        .init(key: .bottomLayerDirection, value: String(degrees))
+    /// Bottom solid layer line direction. **OrcaSlicer only.**
+    static func bottomLayerDirection(_ angle: Angle) -> Self {
+        .init(bambuOnly: .bottomLayerDirection, degrees(angle))
     }
 
-    /// Angle used for internal bridge infill, in degrees. **OrcaSlicer and Creality Print.**
-    static func internalBridgeAngle(_ degrees: Double) -> Self {
-        .init(key: .internalBridgeAngle, value: String(degrees))
+    /// Angle used for internal bridge infill. **OrcaSlicer and Creality Print.**
+    static func internalBridgeAngle(_ angle: Angle) -> Self {
+        .init(bambuOnly: .internalBridgeAngle, degrees(angle))
     }
 }
 
 // MARK: - Creality Print extensions
 
-/// Settings recognized by Creality Print but not vanilla Bambu Studio or OrcaSlicer.
+/// Settings recognized by Creality Print but not vanilla Bambu Studio, OrcaSlicer, or PrusaSlicer.
 public extension SlicerSetting {
     /// Number of walls supporting tree support branches, for the "tree" support style specifically.
     /// **Creality Print only.**
     static func treeSupportWallCountTree(_ count: Int) -> Self {
-        .init(key: .treeSupportWallCountTree, value: String(count))
+        .init(bambuOnly: .treeSupportWallCountTree, number(count))
     }
 
     /// Support base pattern, for the "tree" support style specifically. **Creality Print only.**
     static func supportBasePatternTree(_ pattern: SupportBasePattern) -> Self {
-        .init(key: .supportBasePatternTree, value: pattern.rawValue)
+        .init(bambuOnly: .supportBasePatternTree, pattern.bambuValue)
     }
 
     /// Minimum area a support interface region must have to be generated, in square millimeters.
     /// **Creality Print only.**
     static func supportInterfaceMinArea(_ squareMillimeters: Double) -> Self {
-        .init(key: .supportInterfaceMinArea, value: String(squareMillimeters))
+        .init(bambuOnly: .supportInterfaceMinArea, number(squareMillimeters))
     }
 
     /// Whether organic tree supports are validated and automatically repaired if invalid.
     /// **Creality Print only.**
     static func treeSupportOrganicValidateRepair(_ value: Bool) -> Self {
-        .init(key: .treeSupportOrganicValidateRepair, value: value)
+        .init(bambuOnly: .treeSupportOrganicValidateRepair, flag(value))
     }
 
     /// Whether solid infill direction rotates a fixed amount between layers. **Creality Print only.**
     static func rotateSolidInfillDirection(_ value: Bool) -> Self {
-        .init(key: .rotateSolidInfillDirection, value: value)
+        .init(bambuOnly: .rotateSolidInfillDirection, flag(value))
     }
 
     /// Whether the classic (pre-Arachne) overhang speed algorithm is used. **Creality Print only.**
     static func overhangSpeedClassic(_ value: Bool) -> Self {
-        .init(key: .overhangSpeedClassic, value: value)
+        .init(bambuOnly: .overhangSpeedClassic, flag(value))
     }
+}
+
+/// One component's settings, collapsed to one value per key within each flavor.
+struct ResolvedSlicerSettings: Sendable, Hashable {
+    var bambu: [BambuSettingKey: String] = [:]
+    var prusa: [PrusaSettingKey: String] = [:]
+
+    var isEmpty: Bool { bambu.isEmpty && prusa.isEmpty }
 }
 
 internal extension Array where Element == SlicerSetting {
     /// Collapses to one value per key (last one wins on duplicates), matching how the underlying
-    /// `model_settings.config` storage is keyed. A later single-key setting therefore overrides the
-    /// same key coming from an earlier grouped one, e.g. `[.sparseInfill(.gyroid, density: 20),
-    /// .sparseInfillDensity(50)]` ends up at 50%.
-    var byKey: [SlicerSettingKey: String] {
-        reduce(into: [:]) { $0.merge($1.values) { _, new in new } }
-    }
-}
-
-// MARK: - Accumulation and export
-
-/// Accumulates declared slicer settings, keyed by the exact `Part` instance each was declared (or
-/// re-declared, after packing) against — from anywhere in the tree, not just wherever a
-/// postprocessing handler happens to be attached. Entries whose part never became a real 3MF object
-/// (e.g. the original part behind a quantity>1 component, superseded by its numbered copies) are
-/// simply unresolvable at write time and get filtered out rather than causing an error.
-struct SlicerSettingsEntries: ResultElement {
-    typealias Entry = (part: Part, settings: [SlicerSettingKey: String])
-
-    var entries: [Entry]
-
-    init() { entries = [] }
-    init(_ entries: [Entry]) { self.entries = entries }
-    init(combining elements: [SlicerSettingsEntries]) {
-        entries = elements.flatMap(\.entries)
-    }
-}
-
-extension SlicerSettingsEntries {
-    /// Location of the sidecar within the 3MF archive.
-    static let configPath = "Metadata/model_settings.config"
-
-    /// Writes the platter's `Metadata/model_settings.config` sidecar from every slicer setting declared
-    /// anywhere in the tree, once per export. Safe to call redundantly — from `inComponent` on every
-    /// component that declares settings — since it checks `fileExists` before writing: whichever
-    /// registration runs first does the actual write, the rest see the file already there and no-op.
-    static func writeConfigIfNeeded(to archive: ModelArchive) throws {
-        guard !archive.fileExists(at: configPath) else { return }
-
-        let accumulated = archive.resultElement(Self.self)
-        guard accumulated.entries.contains(where: { archive.objectID(for: $0.part) != nil }) else { return }
-
-        try archive.addFile(at: configPath, data: accumulated.configData(objectID: archive.objectID(for:)))
-    }
-
-    /// Builds a Bambu/Orca `model_settings.config` sidecar (per-object `<metadata key="..." value="..."/>`
-    /// entries under `<object id="...">`), keyed by each part's assigned 3MF object id. Parts whose id can't
-    /// be resolved (shouldn't happen for parts that were actually packed) are skipped rather than guessed at.
-    ///
-    /// Entries are merged per resolved id rather than emitted one block per entry: `inComponent`'s own
-    /// declaration and `onPlatter`'s re-declaration against the final packed part both land in the
-    /// accumulator, and resolve to the *same* id whenever packing didn't rename or copy the part (e.g. the
-    /// common `quantity == 1`, `removingMaterials == false` case) — without merging, that produces
-    /// duplicate `<object>` blocks for the same id instead of one combined one.
-    func configData(objectID: (Part) -> Int?) throws -> Data {
-        var settingsByID: [Int: [SlicerSettingKey: String]] = [:]
-        for (part, settings) in entries {
-            guard let id = objectID(part) else { continue }
-            settingsByID[id, default: [:]].merge(settings) { _, new in new }
+    /// config storage is keyed. Each flavor is collapsed independently, so a later single-key setting
+    /// overrides the same key coming from an earlier grouped one, e.g. `[.infill(.gyroid, density: 20),
+    /// .infillDensity(50)]` ends up at 50% in both files.
+    var resolved: ResolvedSlicerSettings {
+        reduce(into: ResolvedSlicerSettings()) { result, setting in
+            result.bambu.merge(setting.bambu) { _, new in new }
+            result.prusa.merge(setting.prusa) { _, new in new }
         }
-
-        let document = Document()
-        let config = document.makeDocumentElement(name: "config")
-        for id in settingsByID.keys.sorted() {
-            let object = config.addElement("object")
-            object[attribute: "id"] = String(id)
-            for (key, value) in settingsByID[id]!.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-                let metadata = object.addElement("metadata")
-                metadata[attribute: "key"] = key.rawValue
-                metadata[attribute: "value"] = value
-            }
-        }
-
-        return try document.xmlData()
     }
 }

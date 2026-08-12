@@ -1,5 +1,5 @@
 import Foundation
-import Cadova
+@_spi(ArchiveFinalizer) import Cadova
 
 /// A printable component: a self-contained piece of a model, together with what's needed to print it —
 /// which way is up, how many copies to lay out, and any per-object slicer settings.
@@ -27,8 +27,8 @@ public struct Component: Sendable {
     /// around an existing part, which is what keeps two components from ever sharing one.
     public let part: Part
 
-    /// Already collapsed to one value per key, in declaration order.
-    internal let slicerSettings: [SlicerSettingKey: String]
+    /// Already collapsed to one value per key, per slicer flavor, in declaration order.
+    internal let slicerSettings: ResolvedSlicerSettings
 
     /// The direction, in the geometry's own coordinate system, that points up when the component is printed.
     public let upDirection: Direction3D
@@ -43,7 +43,7 @@ public struct Component: Sendable {
         self.part = part
         self.upDirection = upDirection
         self.quantity = Swift.max(1, quantity)
-        self.slicerSettings = slicerSettings.byKey
+        self.slicerSettings = slicerSettings.resolved
     }
 
     /// Creates a component with a plain color as its default material.
@@ -54,9 +54,10 @@ public struct Component: Sendable {
     ///     the component is printed. Defaults to `.up`.
     ///   - quantity: The number of copies to lay out on the platter. Values below 1 are treated as 1.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
-    ///   - slicerSettings: Per-object slicer settings written into a `model_settings.config` sidecar
-    ///     embedded in the exported 3MF (e.g. `[.sparseInfillDensity(15)]`). Recognized by Bambu Studio
-    ///     and its forks (OrcaSlicer, etc.); ignored by other slicers.
+    ///   - slicerSettings: Per-object slicer settings embedded in the exported 3MF (e.g.
+    ///     `[.infillDensity(15)]`). Each setting is written in whichever of the two sidecar formats
+    ///     support it, so the same file configures Bambu Studio and its forks (OrcaSlicer, Creality
+    ///     Print, …) as well as PrusaSlicer and SuperSlicer.
     public init(
         _ name: String,
         upDirection: Direction3D = .up,
@@ -137,7 +138,7 @@ private struct ComponentEntry {
     let part: Part
     let packingBody: any Geometry3D
     let placedBody: (Transform2D) -> any Geometry3D
-    let slicerSettings: [SlicerSettingKey: String]
+    let slicerSettings: ResolvedSlicerSettings
 }
 
 public extension Geometry3D {
@@ -171,7 +172,7 @@ public extension Geometry3D {
                 .modifyingResult(SlicerSettingsEntries.self) {
                     $0.entries.append((component.part, component.slicerSettings))
                 }
-                .withArchiveFinalizer { try SlicerSettingsEntries.writeConfigIfNeeded(to: $0) }
+                .withArchiveFinalizer { try await SlicerSettingsEntries.writeConfigsIfNeeded(to: $0) }
         }
 
         return geometry.inPart(component.part)
@@ -189,9 +190,9 @@ public extension Geometry3D {
     ///     the component is printed. Defaults to `.up`.
     ///   - quantity: The number of copies to lay out on the platter. Values below 1 are treated as 1.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
-    ///   - slicerSettings: Per-object slicer settings written into the platter's `model_settings.config`
-    ///     sidecar file (e.g. `[.sparseInfillDensity(15)]`). Recognized by Bambu Studio and its forks
-    ///     (OrcaSlicer, etc.); ignored by other slicers. See ``onPlatter(removingMaterials:separatingParts:)``.
+    ///   - slicerSettings: Per-object slicer settings written into the platter's config sidecars
+    ///     (e.g. `[.infillDensity(15)]`), for both Bambu Studio and PrusaSlicer and their forks. See
+    ///     ``onPlatter(removingMaterials:separatingParts:)``.
     /// - Returns: The geometry declared as a named printable component.
     func inComponent(
         name: String,
@@ -219,10 +220,11 @@ public extension Geometry3D {
     /// selectable and movable in a slicer. Geometry that isn't a component — including plain Cadova
     /// ``Cadova/Geometry3D/inPart(_:)`` parts — is discarded.
     ///
-    /// If any component declared `slicerSettings`, this also embeds a `Metadata/model_settings.config`
-    /// sidecar file into the exported 3MF, referencing each packed part by its assigned object id.
-    /// Bambu Studio and its forks read this automatically, applying the settings without the user having
-    /// to configure them by hand in the slicer.
+    /// If any component declared `slicerSettings`, this also embeds two sidecar files into the
+    /// exported 3MF — `Metadata/model_settings.config` and `Metadata/Slic3r_PE_model.config` —
+    /// referencing each packed part by its assigned object id. Each slicer reads whichever one it
+    /// knows and ignores the other, applying the settings without the user having to configure them
+    /// by hand.
     ///
     /// The packing margin and rotation count come from the environment
     /// (``Cadova/EnvironmentValues/packingMargin`` and ``Cadova/EnvironmentValues/packingRotationCount``);
