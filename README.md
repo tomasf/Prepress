@@ -102,4 +102,4 @@ Arrays of plain geometry can be packed directly with `packed()`, without involvi
 
 ## License
 
-This project is licensed under the MIT license.
+This project is licensed under the MIT license. See the LICENSE file for details.
