@@ -55,6 +55,13 @@ struct SlicerSettingTests {
         #expect(SlicerSetting.brimType(.outerOnly).bambu == [.brimType: "outer_only"])
         #expect(SlicerSetting.supportStyle(.treeOrganic).bambu == [.supportStyle: "tree_organic"])
         #expect(SlicerSetting.supportStyle(.treeOrganic).prusa == [.supportMaterialStyle: "organic"])
+
+        // PrusaSlicer's support_material_style accepts only grid, snug and organic. Bambu's three
+        // tuned tree variants have to land on organic; writing a "tree" value it doesn't define would
+        // be substituted away or rejected, silently giving grid support instead of a tree.
+        for style in [SupportStyle.treeSlim, .treeStrong, .treeHybrid] {
+            #expect(SlicerSetting.supportStyle(style).prusa == [.supportMaterialStyle: "organic"])
+        }
         #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).bambu == [.supportBasePattern: "rectilinear-grid"])
 
         // The escape hatches are flavor-scoped, so a raw key can't land in the wrong file.

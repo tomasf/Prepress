@@ -124,21 +124,21 @@ public extension SlicerSetting {
     ///   - width: Brim width, in millimeters.
     ///   - objectGap: Gap between the brim and the object, in millimeters.
     ///   - flowRatio: Flow multiplier for brim lines. **OrcaSlicer only.**
-    ///   - useEfcOutline: Whether the brim follows the elephant-foot-compensated outline.
+    ///   - followsCompensatedOutline: Whether the brim follows the elephant-foot-compensated outline.
     ///     **OrcaSlicer only.**
     static func brim(
         _ type: BrimType,
         width: Double? = nil,
         objectGap: Double? = nil,
         flowRatio: Double? = nil,
-        useEfcOutline: Bool? = nil
+        followsCompensatedOutline: Bool? = nil
     ) -> Self {
         .init(combining: [
             .brimType(type),
             width.map(Self.brimWidth),
             objectGap.map(Self.brimObjectGap),
             flowRatio.map(Self.brimFlowRatio),
-            useEfcOutline.map(Self.brimUseEfcOutline),
+            followsCompensatedOutline.map(Self.brimFollowsCompensatedOutline),
         ])
     }
 
