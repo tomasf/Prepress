@@ -49,9 +49,14 @@ extension SlicerSettingsEntries {
     static func writeConfigsIfNeeded(to archive: ModelArchive) async throws {
         let accumulated = archive.resultElement(Self.self)
 
-        if !archive.fileExists(at: bambuConfigPath),
-           let data = try accumulated.bambuConfigData(objectID: archive.objectID(for:)) {
-            try archive.addFile(at: bambuConfigPath, data: data)
+        if !archive.fileExists(at: bambuConfigPath) {
+            let names = archive.objectNames
+            if let data = try accumulated.bambuConfigData(
+                objectID: archive.objectID(for:),
+                objectName: { names[$0] }
+            ) {
+                try archive.addFile(at: bambuConfigPath, data: data)
+            }
         }
 
         guard !archive.fileExists(at: prusaConfigPath) else { return }
@@ -84,13 +89,34 @@ extension SlicerSettingsEntries {
     }
 }
 
+private extension ModelArchive {
+    /// The name written into each emitted object's `name` attribute, keyed by its 3MF object id.
+    ///
+    /// Taken from the parts actually written rather than from the parts our settings were declared
+    /// against, so the names in the config can't drift from the ones in the model — packing renames
+    /// and copies parts, and only the emitted part's name reaches the file.
+    var objectNames: [Int: String] {
+        parts.reduce(into: [:]) { names, part in
+            if let id = objectID(for: part) {
+                names[id] = part.name
+            }
+        }
+    }
+}
+
 // MARK: - Building the config files
 
 extension SlicerSettingsEntries {
     /// Builds Bambu Studio's `model_settings.config`, or `nil` when no part contributed anything to
     /// it. Parts whose id can't be resolved (shouldn't happen for parts that were actually packed)
     /// are skipped rather than guessed at.
-    func bambuConfigData(objectID: (Part) -> Int?) throws -> Data? {
+    ///
+    /// Each object also carries a `name`, which is not a print setting but is load-bearing anyway:
+    /// Bambu Studio's reader takes an object's displayed name from this key alone once the object has
+    /// a config block, ignoring the `name` attribute on the 3MF `<object>` element it would otherwise
+    /// use. Without it, configuring a component would blank its name in the object list. An explicit
+    /// ``BambuSettingKey/name`` in the settings wins over the part's own name.
+    func bambuConfigData(objectID: (Part) -> Int?, objectName: (Int) -> String?) throws -> Data? {
         var settingsByID: [Int: [BambuSettingKey: String]] = [:]
         for (part, settings) in settingsByPart {
             guard !settings.bambu.isEmpty, let id = objectID(part) else { continue }
@@ -101,9 +127,14 @@ extension SlicerSettingsEntries {
         let document = Document()
         let config = document.makeDocumentElement(name: "config")
         for id in settingsByID.keys.sorted() {
+            var settings = settingsByID[id]!
+            if let name = objectName(id) {
+                settings[.name] = settings[.name] ?? name
+            }
+
             let object = config.addElement("object")
             object[attribute: "id"] = String(id)
-            object.addMetadata(settingsByID[id]!, type: nil)
+            object.addMetadata(settings, type: nil)
         }
         return try document.xmlData()
     }

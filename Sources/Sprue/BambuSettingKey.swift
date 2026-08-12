@@ -89,6 +89,20 @@ public enum BambuSettingKey: String, Sendable {
     case bridgeAngle = "bridge_angle"
     case minimumSparseInfillArea = "minimum_sparse_infill_area"
 
+    // Object metadata
+
+    /// The object's display name — not a print setting.
+    ///
+    /// Bambu Studio's reader treats this key specially: once an object has a config block, the name
+    /// shown in its object list comes from this key *only*, and the `name` attribute on the 3MF
+    /// `<object>` element is never consulted. An object with settings but no `name` metadata
+    /// therefore loads with a blank name.
+    ///
+    /// Sprue fills this in automatically from the part's name, so you don't normally set it. Doing so
+    /// explicitly overrides that name for the Bambu-lineage slicers only, without renaming the part
+    /// or affecting PrusaSlicer.
+    case name
+
     // Multi-material
     case extruder
     case flushIntoInfill = "flush_into_infill"

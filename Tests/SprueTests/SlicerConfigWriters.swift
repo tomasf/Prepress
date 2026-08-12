@@ -10,7 +10,7 @@ struct SlicerConfigWriterTests {
             .sparseInfillDensity: "15%",
             .wallLoops: "A & B <ok>",
         ]))])
-        let data = try entries.bambuConfigData(objectID: { _ in 42 })
+        let data = try entries.bambuConfigData(objectID: { _ in 42 }, objectName: { _ in "Widget" })
         let string = try #require(data).utf8String
 
         #expect(string.contains(#"<object id="42">"#))
@@ -26,7 +26,7 @@ struct SlicerConfigWriterTests {
         // is skipped rather than emitting a malformed <object id="..."> entry.
         let entries = SlicerSettingsEntries([(Part("Orphan"), .init(bambu: [.wallLoops: "3"], prusa: [.perimeters: "3"]))])
 
-        #expect(try entries.bambuConfigData(objectID: { _ in nil }) == nil)
+        #expect(try entries.bambuConfigData(objectID: { _ in nil }, objectName: { _ in nil }) == nil)
         #expect(try entries.prusaConfigData(objectID: { _ in nil }, triangleCount: { _ in 12 }) == nil)
     }
 
@@ -39,12 +39,32 @@ struct SlicerConfigWriterTests {
             (Part("A"), .init(bambu: [.wallLoops: "3"])),
             (Part("B"), .init(bambu: [.sparseInfillDensity: "20%"])), // distinct Part, same object id
         ])
-        let data = try entries.bambuConfigData(objectID: { _ in 7 })
+        let data = try entries.bambuConfigData(objectID: { _ in 7 }, objectName: { _ in nil })
         let string = try #require(data).utf8String
 
         #expect(string.components(separatedBy: "<object").count == 2) // one split point == one <object> block
         #expect(string.contains(#"key="wall_loops" value="3""#))
         #expect(string.contains(#"key="sparse_infill_density" value="20%""#))
+    }
+
+    @Test func `bambu config carries the object name`() throws {
+        // Bambu Studio takes an object's displayed name from this metadata key alone once the object
+        // has a config block — the `name` attribute on the 3MF <object> element is never consulted in
+        // that branch. Omitting it blanks the name of every component that has settings.
+        let entries = SlicerSettingsEntries([(Part("Widget"), .init(bambu: [.wallLoops: "3"]))])
+        let data = try entries.bambuConfigData(objectID: { _ in 42 }, objectName: { _ in "Bracket" })
+        let string = try #require(data).utf8String
+
+        #expect(string.contains(#"key="name" value="Bracket""#))
+    }
+
+    @Test func `an explicit name setting wins over the part's name`() throws {
+        let entries = SlicerSettingsEntries([(Part("Widget"), .init(bambu: [.name: "Chosen"]))])
+        let data = try entries.bambuConfigData(objectID: { _ in 42 }, objectName: { _ in "Bracket" })
+        let string = try #require(data).utf8String
+
+        #expect(string.contains(#"key="name" value="Chosen""#))
+        #expect(!string.contains("Bracket"))
     }
 
     @Test func `prusa config writes a volume spanning the whole mesh`() throws {

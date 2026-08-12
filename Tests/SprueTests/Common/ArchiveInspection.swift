@@ -39,6 +39,33 @@ extension ZipArchive<Data> {
         return counts
     }
 
+    /// The `name` attribute Cadova wrote on each build item's `<object>` element, keyed by object id.
+    /// This is the name a slicer shows for an object that has no config block of its own.
+    func modelObjectNames() throws -> [Int: String] {
+        var names: [Int: String] = [:]
+        for item in try text(at: "3D/3dmodel.model").fragments(forTag: "item") {
+            guard let id = item.attributeValue("objectid").flatMap(Int.init) else { continue }
+            let path = item.attributeValue("p:path").map { String($0.dropFirst()) } ?? "3D/3dmodel.model"
+            let object = try text(at: path).fragments(forTag: "object")
+                .first { $0.attributeValue("id").flatMap(Int.init) == id }
+            names[id] = object?.attributeValue("name")
+        }
+        return names
+    }
+
+    /// The `name` metadata in Bambu Studio's sidecar, keyed by object id. Bambu takes an object's
+    /// displayed name from here alone once the object has a config block.
+    func bambuObjectNames() throws -> [Int: String] {
+        var names: [Int: String] = [:]
+        for object in try text(at: SlicerSettingsEntries.bambuConfigPath).fragments(forTag: "object") {
+            guard let id = object.attributeValue("id").flatMap(Int.init) else { continue }
+            names[id] = object.fragments(forTag: "metadata")
+                .first { $0.attributeValue("key") == "name" }?
+                .attributeValue("value")
+        }
+        return names
+    }
+
     /// Each object id in PrusaSlicer's sidecar, paired with the `firstid`/`lastid` of its volume.
     func prusaVolumeRanges() throws -> [Int: (firstID: Int, lastID: Int)] {
         var ranges: [Int: (Int, Int)] = [:]

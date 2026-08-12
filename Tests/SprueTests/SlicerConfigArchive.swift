@@ -113,6 +113,36 @@ struct SlicerConfigArchiveTests {
             .contains(#"key="fill_density" value="15%""#))
     }
 
+    @Test func `configured components keep their names in Bambu Studio`() async throws {
+        // Regression: Bambu Studio's reader has two mutually exclusive branches. Without a config
+        // block it names an object from the 3MF <object name> attribute; *with* one it uses only the
+        // block's `name` metadata and never looks at the attribute. So every component that had
+        // slicer settings loaded with a blank name, while the ones without settings were fine.
+        let platter = Stack(.x, spacing: 1) {
+            Box(10)
+                .inComponent(name: "Foo", upDirection: .up, slicerSettings: [.infill(.gyroid, density: 20)])
+            Box(15)
+                .inComponent(name: "Larger", upDirection: .up, slicerSettings: [])
+            Box(20)
+                .inComponent(name: "Huge", upDirection: .up, slicerSettings: [.support(.treeAuto)])
+        }
+        .onPlatter()
+
+        let data = try await ModelFileGenerator.build { platter }.data()
+        let archive = try ZipArchive(data: data)
+
+        let modelNames = try archive.modelObjectNames()
+        let bambuNames = try archive.bambuObjectNames()
+
+        // The two configured components are the ones at risk; the unconfigured one gets no block.
+        #expect(Set(modelNames.values) == ["Foo", "Larger", "Huge"])
+        #expect(bambuNames.count == 2)
+        for (id, name) in bambuNames {
+            #expect(name == modelNames[id], "object \(id) is named \(name ?? "nil") in the config")
+        }
+        #expect(Set(bambuNames.values.compactMap { $0 }) == ["Foo", "Huge"])
+    }
+
     @Test func `a setting only one slicer supports writes only that slicer's file`() async throws {
         // A component configured purely with fork-only settings has nothing to say to PrusaSlicer, so
         // that sidecar must be left out rather than written empty (or, worse, written with keys
