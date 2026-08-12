@@ -856,8 +856,7 @@ public extension SlicerSetting {
     /// Bambu Studio renamed this option in its forks, so both spellings are written for that flavor —
     /// each fork reads the one it knows and ignores the other.
     ///
-    /// All three slicers also accept a percentage here; use ``raw(bambu:_:)``/``raw(prusa:_:)`` if
-    /// you need that form.
+    /// All three slicers also accept a percentage here, which Sprue doesn't expose.
     ///
     /// Shown as "Length of sparse infill anchor" in Bambu Studio, "Sparse infill anchor length" in its forks, and "Length of the infill anchor" in PrusaSlicer.
     static func infillAnchor(_ millimeters: Double) -> Self {
@@ -904,8 +903,8 @@ public extension SlicerSetting {
     /// Whether sparse infill is combined across multiple layers to reduce print time.
     /// **Bambu Studio and its forks only.**
     ///
-    /// PrusaSlicer's equivalent takes a layer count rather than a flag; use
-    /// ``raw(prusa:_:)`` with ``PrusaSettingKey/infillEveryLayers`` to set it.
+    /// PrusaSlicer's equivalent takes a layer count rather than a flag, so it has no direct
+    /// counterpart here.
     static func infillCombination(_ value: Bool) -> Self {
         .init(bambuOnly: .infillCombination, flag(value))
     }
@@ -974,20 +973,6 @@ public extension SlicerSetting {
         .init(bambuOnly: .flushIntoSupport, flag(value))
     }
 
-    // MARK: Escape hatches
-
-    /// A raw key/value pair written only into Bambu Studio's config, for options with no factory above.
-    static func raw(bambu key: BambuSettingKey, _ value: String) -> Self {
-        .init(bambu: [key: value])
-    }
-
-    /// A raw key/value pair written only into PrusaSlicer's config, for options with no factory above.
-    ///
-    /// - Warning: PrusaSlicer refuses to open a 3MF containing an option key it doesn't know. See
-    ///   ``PrusaSettingKey`` before reaching for `PrusaSettingKey(rawValue:)`.
-    static func raw(prusa key: PrusaSettingKey, _ value: String) -> Self {
-        .init(prusa: [key: value])
-    }
 }
 
 // MARK: - OrcaSlicer extensions
@@ -1210,7 +1195,7 @@ public extension SlicerSetting {
     /// Maximum combined layer height when combining sparse infill across multiple layers, in
     /// millimeters. **OrcaSlicer and Creality Print.**
     ///
-    /// Also accepts a percentage; use ``raw(bambu:_:)`` for that form.
+    /// OrcaSlicer also accepts a percentage here, which Sprue doesn't expose.
     ///
     /// Shown as "Infill combination - Max layer height" in OrcaSlicer and Creality Print.
     static func infillCombinationMaxLayerHeight(_ millimeters: Double) -> Self {

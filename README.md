@@ -86,8 +86,6 @@ slicerSettings: [
 ]
 ```
 
-For options with no factory, `raw(bambu:_:)` and `raw(prusa:_:)` take a key directly.
-
 ### Packing
 
 Packing uses a no-fit-polygon nester over each component's footprint. Two environment modifiers tune it:

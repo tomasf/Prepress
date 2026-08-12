@@ -12,13 +12,10 @@ import Foundation
 /// `model_settings.config` sidecar format, so a key one fork doesn't recognize is simply ignored by
 /// it rather than causing an error.
 ///
-/// You rarely name these directly: the ``SlicerSetting`` factories are slicer-agnostic and pick the
-/// right key for each flavor themselves. This enum is here for ``SlicerSetting/raw(bambu:_:)``, for
-/// options with no neutral factory.
-///
-/// Since this is a plain `String`-backed enum, it's `RawRepresentable`, so a key not listed here can
-/// still be used via `BambuSettingKey(rawValue: "some_other_key")`.
-public enum BambuSettingKey: String, Sendable {
+/// The ``SlicerSetting`` factories are slicer-agnostic and pick the right key for each flavor
+/// themselves, so this enum is an implementation detail of that lowering rather than something
+/// callers name directly.
+enum BambuSettingKey: String, Sendable {
     // Quality
     case layerHeight = "layer_height"
     case wallSequence = "wall_sequence"

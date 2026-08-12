@@ -7,15 +7,15 @@ import Foundation
 /// per object, so a key outside them deserializes without complaint and is then quietly ignored at
 /// slicing time.
 ///
-/// You rarely name these directly: the ``SlicerSetting`` factories are slicer-agnostic and pick the
-/// right key for each flavor themselves. This enum is here for ``SlicerSetting/raw(prusa:_:)``, for
-/// options with no neutral factory.
+/// The ``SlicerSetting`` factories are slicer-agnostic and pick the right key for each flavor
+/// themselves, so this enum is an implementation detail of that lowering rather than something
+/// callers name directly.
 ///
 /// - Warning: Unlike Bambu Studio, PrusaSlicer does **not** ignore keys it doesn't recognize. It
 ///   throws `UnknownOptionException` from a call site outside its importer's error handling, so a
-///   single bad key makes the whole 3MF fail to open. If you reach for
-///   `PrusaSettingKey(rawValue:)`, make sure the key really exists and really is per-object.
-public enum PrusaSettingKey: String, Sendable {
+///   single bad key makes the whole 3MF fail to open. Any case added here must really exist and
+///   really be per-object.
+enum PrusaSettingKey: String, Sendable {
     // Quality (PrintObjectConfig)
     case layerHeight = "layer_height"
     case sliceClosingRadius = "slice_closing_radius"

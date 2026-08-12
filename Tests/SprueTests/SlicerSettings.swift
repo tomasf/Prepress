@@ -63,12 +63,6 @@ struct SlicerSettingTests {
             #expect(SlicerSetting.supportStyle(style).prusa == [.supportMaterialStyle: "organic"])
         }
         #expect(SlicerSetting.supportBasePattern(.rectilinearGrid).bambu == [.supportBasePattern: "rectilinear-grid"])
-
-        // The escape hatches are flavor-scoped, so a raw key can't land in the wrong file.
-        #expect(SlicerSetting.raw(bambu: .enableSupport, "1").bambu == [.enableSupport: "1"])
-        #expect(SlicerSetting.raw(bambu: .enableSupport, "1").prusa.isEmpty)
-        #expect(SlicerSetting.raw(prusa: .supportMaterial, "1").prusa == [.supportMaterial: "1"])
-        #expect(SlicerSetting.raw(prusa: .supportMaterial, "1").bambu.isEmpty)
     }
 
     @Test func `settings split across several options in one slicer`() {
