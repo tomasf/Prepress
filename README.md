@@ -88,17 +88,14 @@ slicerSettings: [
 
 ### Packing
 
-Packing uses a no-fit-polygon nester over each component's footprint. Two environment modifiers tune it:
+Components are laid out with a no-fit-polygon nester over each one's footprint. The gap between them is the one thing worth tuning:
 
 ```swift
 .onPlatter()
-    .withPackingMargin(2)         // mm grown around each footprint; neighbors end up ~2× this apart
-    .withPackingRotationCount(8)  // rotations tried per piece; tighter, but slower
+    .withComponentSpacing(4)  // mm between neighboring parts; defaults to 2
 ```
 
-`onPlatter(removingMaterials:separatingParts:)` takes two further options. `removingMaterials` strips all colors so the platter prints as one uniform material, and `separatingParts` (on by default) packs a component's disconnected solids individually, which nests tighter than keeping them as one rigid unit.
-
-Arrays of plain geometry can be packed directly with `packed()`, without involving components.
+`onPlatter(removingMaterials:separatingParts:)` takes two further options. `removingMaterials` strips all colors so the platter prints as one uniform material, and `separatingParts` (on by default) lays out a component's disconnected solids individually, which nests tighter than keeping them as one rigid unit.
 
 ## License
 

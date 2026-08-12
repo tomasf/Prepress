@@ -72,7 +72,6 @@ struct PlatterTests {
             .inComponent(outer)
             .rotated(x: 90°)
             .onPlatter(separatingParts: false)
-            .withPackingRotationCount(1)
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 capture.bounds = await evaluator.bounds(of: parts[nested.part]!)
@@ -100,7 +99,6 @@ struct PlatterTests {
             .inComponent(component)
             .rotated(x: 90°)
             .onPlatter(separatingParts: false)
-            .withPackingRotationCount(1)
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 let partGeometry = parts[component.part]!
@@ -160,7 +158,7 @@ struct PlatterTests {
             .definingNaturalUpDirection(.positiveZ)
             .rotated(x: 90°)
             .onPlatter()
-            .withPackingMargin(2)
+            .withComponentSpacing(4)
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 let discGeometry = parts[disc.part]!

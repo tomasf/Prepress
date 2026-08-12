@@ -68,12 +68,12 @@ await Project(packageRelative: "Models") {
     await Model("Components on platter") {
         components()
             .onPlatter()
-            .withPackingMargin(2)
+            .withComponentSpacing(4)
     }
 
     await Model("Different Infill Demo") {
         infillDemoComponents()
             .onPlatter()
-            .withPackingMargin(2)
+            .withComponentSpacing(4)
     }
 }

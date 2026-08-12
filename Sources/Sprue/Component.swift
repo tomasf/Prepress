@@ -226,10 +226,9 @@ public extension Geometry3D {
     /// knows and ignores the other, applying the settings without the user having to configure them
     /// by hand.
     ///
-    /// The packing margin and rotation count come from the environment
-    /// (``Cadova/EnvironmentValues/packingMargin`` and ``Cadova/EnvironmentValues/packingRotationCount``);
-    /// set them with ``Cadova/Geometry/withPackingMargin(_:)`` and
-    /// ``Cadova/Geometry/withPackingRotationCount(_:)``.
+    /// The gap left between neighboring components comes from the environment
+    /// (``Cadova/EnvironmentValues/componentSpacing``); set it with
+    /// ``Cadova/Geometry/withComponentSpacing(_:)``.
     ///
     /// - Parameters:
     ///   - removingMaterials: When `true`, strips all colors and materials from the packed result — both
@@ -242,13 +241,11 @@ public extension Geometry3D {
     /// - Returns: The components packed onto a platter, each preserved as its own part.
     func onPlatter(removingMaterials: Bool = false, separatingParts: Bool = true) -> any Geometry3D {
         evaluating { base, evaluator in
-            @Environment(\.packingMargin) var margin
-            @Environment(\.packingRotationCount) var rotationCount
+            @Environment(\.footprintMargin) var margin
             let placed = await packComponents(
                 of: base,
                 using: evaluator,
                 margin: margin,
-                rotationCount: rotationCount,
                 separatingParts: separatingParts,
                 removingMaterials: removingMaterials
             )
@@ -264,7 +261,6 @@ private func packComponents(
     of base: any Geometry3D,
     using evaluator: GeometryEvaluator,
     margin: Double,
-    rotationCount: Int,
     separatingParts: Bool,
     removingMaterials: Bool
 ) async -> [any Geometry3D] {
@@ -331,7 +327,7 @@ private func packComponents(
     }
 
     // Pack the real bodies (footprints need real geometry), then re-wrap each in its part.
-    let packer = Packer(bodies: entries.map(\.packingBody), margin: margin, rotationCount: rotationCount, footprintDetail: 24)
+    let packer = Packer(bodies: entries.map(\.packingBody), margin: margin, footprintDetail: 24)
     let transforms = await packer.placements(using: evaluator)
 
     return zip(entries, transforms).map { entry, transform -> any Geometry3D in
