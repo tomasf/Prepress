@@ -49,7 +49,7 @@ Box(x: 12, y: 12, z: 70)
     .inComponent(name: "Pillar", upDirection: .right)
 ```
 
-This also feeds Cadova's overhang compensation inside the component, so features are built for the orientation they're actually printed in.
+Declaring a component also sets Cadova's `naturalUpDirection` environment value for its geometry. Anything inside that reads it, such as circular overhang compensation and chamfered holes, is then built for the orientation the part is actually printed in, without having to be told the direction a second time.
 
 ### Multiple copies
 
