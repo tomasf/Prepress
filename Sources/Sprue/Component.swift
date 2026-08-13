@@ -70,6 +70,21 @@ public struct Component: Sendable {
         )
     }
 
+    /// Creates a part for one declaration of this component.
+    ///
+    /// ``Cadova/Geometry3D/inComponent(_:upDirection:part:)`` normally makes this part itself, and
+    /// keeping it private is what stops two declarations from sharing one. Make it yourself only when
+    /// something else needs the same ``Cadova/Part`` value — most often
+    /// ``Cadova/Geometry/detachingPart(_:_:)``, to pull this piece back out of an assembly.
+    ///
+    /// - Important: A part made here belongs to exactly one declaration. Reusing it across several
+    ///   merges them back into one, and only one of their orientations can survive — which is the
+    ///   problem per-declaration parts exist to avoid. In an assembly that repeats a component, make
+    ///   one per repetition (an instance property of whatever is repeated, not a static).
+    public func makePart() -> Part {
+        Part(name, semantic: .solid, material: material)
+    }
+
     /// Creates a component with a physically-based default material.
     ///
     /// See ``init(_:platter:color:slicerSettings:)``.
@@ -150,12 +165,19 @@ public extension Geometry3D {
     ///   - component: The component this geometry belongs to.
     ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up
     ///     when it's printed. Defaults to `.up`.
+    ///   - part: The part to emit into, from ``Component/makePart()``. Pass one only when something
+    ///     else needs the same ``Cadova/Part`` value, such as ``Cadova/Geometry/detachingPart(_:_:)``;
+    ///     by default each declaration gets its own, which is what keeps them independent.
     /// - Returns: The geometry declared as that printable component.
-    func inComponent(_ component: Component, upDirection: Direction3D = .up) -> any Geometry3D {
+    func inComponent(
+        _ component: Component,
+        upDirection: Direction3D = .up,
+        part: Part? = nil
+    ) -> any Geometry3D {
         // A fresh part per declaration, so two bodies of one component stay distinguishable all the way
         // to the platter. Sharing one part would merge them, and only one declaration's frame could
         // survive — which used to leave every body but one tilted.
-        let part = Part(component.name, semantic: .solid, material: component.material)
+        let part = part ?? component.makePart()
 
         // `definingNaturalUpDirection` keeps Cadova's overhang compensation working inside the component;
         // the `ComponentData` result element is what the packer reads. The transform in effect here is

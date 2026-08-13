@@ -41,6 +41,20 @@ struct ComponentTests {
             }
     }
 
+    @Test func `an explicit part keeps a declaration reachable`() {
+        // makePart exists for interop with Cadova APIs that need a concrete Part, like detachingPart.
+        // The part it hands out carries the component's name and material, so the output is identical
+        // to the one inComponent would have made for itself.
+        let component = Component("Carrier", color: .red)
+        let part = component.makePart()
+
+        #expect(part.name == "Carrier")
+        #expect(part.defaultMaterial != nil)
+        #expect(component.makePart() != component.makePart()) // a fresh one each time, never shared
+
+        _ = Box(1).inComponent(component, upDirection: .down, part: part)
+    }
+
     @Test func `each component has a distinct identity`() {
         // Two components with the same name are still distinct identities, so they can never collapse
         // into a single object in the output.
