@@ -40,7 +40,7 @@ struct SlicerConfigArchiveTests {
         // and the volume range have to follow the *packed* part rather than the one the component
         // declared. Distinct shapes here so a mix-up between copies couldn't pass by coincidence.
         let platter = Cylinder(diameter: 12, height: 6).withSegmentation(count: 6)
-            .inComponent(name: "Hex", quantity: 3, slicerSettings: [.infillDensity(35)])
+            .inComponent(name: "Hex", platter: .init(quantity: 3), slicerSettings: [.infillDensity(35)])
             .adding {
                 Sphere(radius: 7)
                     .inComponent(name: "Ball", slicerSettings: [.wallCount(2)])

@@ -4,7 +4,7 @@ Sprue is a library for [Cadova](https://github.com/tomasf/Cadova) that smooths o
 
 Writing a model in code makes the model itself easy to change, but the steps around it stay stubbornly manual. Every regeneration means arranging the parts on the bed again, standing up the ones that print on their side, and re-entering the per-object settings you picked last time. None of that is design work, and none of it survives the next edit.
 
-Sprue's goal is to move those steps into the model, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. What that looks like today is described below: declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and packs onto a platter, and per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
+Sprue's goal is to move those steps into the model, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. What that looks like today is described below: declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and lays out on a platter, and per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
 
 ## Installation
 
@@ -51,13 +51,22 @@ Box(x: 12, y: 12, z: 70)
 
 Declaring a component also sets Cadova's `naturalUpDirection` environment value for its geometry. Anything inside that reads it, such as circular overhang compensation and chamfered holes, is then built for the orientation the part is actually printed in, without having to be told the direction a second time.
 
-### Multiple copies
+### Platter options
 
-A component that's needed more than once produces that many copies on the platter, each packed and named separately:
+A component carries a few settings that only mean anything once it's laid out, grouped into `PlatterOptions`.
+
+The usual way of working is to build the model as it looks assembled, marking each piece as a component where it sits, and put the whole thing on a platter. Several bodies marked with the *same* component merge into one part, so four wheels placed around an assembly arrive as one part holding four disconnected solids. They're laid out individually by default, which is what you want. Set `separateSolids` to `false` to keep a component's solids together as a rigid unit, for a print-in-place hinge or a captive nut:
+
+```swift
+hinge
+    .inComponent(name: "Hinge", platter: .init(separateSolids: false))
+```
+
+`quantity` covers the other case, where the model contains one of something but the print needs several:
 
 ```swift
 Cylinder(diameter: 26, height: 14).withSegmentation(count: 6)
-    .inComponent(name: "Hex", quantity: 4)
+    .inComponent(name: "Hex", platter: .init(quantity: 4))
 ```
 
 ### Slicer settings
@@ -86,7 +95,7 @@ slicerSettings: [
 ]
 ```
 
-### Packing
+### Layout
 
 Components are laid out with a no-fit-polygon nester over each one's footprint. The gap between them is the one thing worth tuning:
 
@@ -95,7 +104,7 @@ Components are laid out with a no-fit-polygon nester over each one's footprint. 
     .withComponentSpacing(4)  // mm between neighboring parts; defaults to 2
 ```
 
-`onPlatter(removingMaterials:separatingParts:)` takes two further options. `removingMaterials` strips all colors so the platter prints as one uniform material, and `separatingParts` (on by default) lays out a component's disconnected solids individually, which nests tighter than keeping them as one rigid unit.
+`onPlatter(removingMaterials:)` takes one further option: `removingMaterials` strips all colors so the platter prints as one uniform material.
 
 ## License
 

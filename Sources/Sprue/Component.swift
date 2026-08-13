@@ -7,7 +7,7 @@ import Foundation
 /// Create a component once and mark geometry with it, the way Cadova's ``Cadova/Part`` works:
 ///
 /// ```swift
-/// let bracket = Component("Bracket", upDirection: .right, quantity: 4)
+/// let bracket = Component("Bracket", upDirection: .right, platter: .init(quantity: 4))
 ///
 /// Box(10)
 ///     .inComponent(bracket)
@@ -33,16 +33,16 @@ public struct Component: Sendable {
     /// The direction, in the geometry's own coordinate system, that points up when the component is printed.
     public let upDirection: Direction3D
 
-    /// The number of copies to lay out on the platter. Always at least 1.
-    public let quantity: Int
+    /// The parts of this component's configuration that only apply once it's laid out on a platter.
+    public let platter: PlatterOptions
 
     /// The name of the component, as it appears in the output file.
     public var name: String { part.name }
 
-    private init(part: Part, upDirection: Direction3D, quantity: Int, slicerSettings: [SlicerSetting]) {
+    private init(part: Part, upDirection: Direction3D, platter: PlatterOptions, slicerSettings: [SlicerSetting]) {
         self.part = part
         self.upDirection = upDirection
-        self.quantity = Swift.max(1, quantity)
+        self.platter = platter
         self.slicerSettings = slicerSettings.resolved
     }
 
@@ -52,7 +52,8 @@ public struct Component: Sendable {
     ///   - name: The name of the component, as it appears in the output file.
     ///   - upDirection: The direction, in the geometry's own coordinate system, that should point up when
     ///     the component is printed. Defaults to `.up`.
-    ///   - quantity: The number of copies to lay out on the platter. Values below 1 are treated as 1.
+    ///   - platter: Options that only apply once the component is laid out on a platter, such as
+    ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
     ///   - slicerSettings: Per-object slicer settings embedded in the exported 3MF (e.g.
     ///     `[.infillDensity(15)]`). Each setting is written in whichever of the two sidecar formats
@@ -61,39 +62,39 @@ public struct Component: Sendable {
     public init(
         _ name: String,
         upDirection: Direction3D = .up,
-        quantity: Int = 1,
+        platter: PlatterOptions = .default,
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) {
         self.init(
             part: Part(name, semantic: .solid, color: color),
             upDirection: upDirection,
-            quantity: quantity,
+            platter: platter,
             slicerSettings: slicerSettings
         )
     }
 
     /// Creates a component with a physically-based default material.
     ///
-    /// See ``init(_:upDirection:quantity:color:slicerSettings:)``.
+    /// See ``init(_:upDirection:platter:color:slicerSettings:)``.
     public init(
         _ name: String,
         upDirection: Direction3D = .up,
-        quantity: Int = 1,
+        platter: PlatterOptions = .default,
         material: Material?,
         slicerSettings: [SlicerSetting] = []
     ) {
         self.init(
             part: Part(name, semantic: .solid, material: material),
             upDirection: upDirection,
-            quantity: quantity,
+            platter: platter,
             slicerSettings: slicerSettings
         )
     }
 }
 
 /// Records that a piece of geometry is a printable ``Component`` that
-/// ``Cadova/Geometry3D/onPlatter(removingMaterials:separatingParts:)`` orients, multiplies and packs.
+/// ``Cadova/Geometry3D/onPlatter(removingMaterials:)`` orients, multiplies and packs.
 ///
 /// Only geometry explicitly declared with ``Cadova/Geometry3D/inComponent(_:)`` (or its `name:` variant)
 /// carries this; the platter ignores everything else, including plain Cadova
@@ -143,9 +144,9 @@ private struct ComponentEntry {
 
 public extension Geometry3D {
     /// Declares this geometry as the given printable component, for
-    /// ``onPlatter(removingMaterials:separatingParts:)``.
+    /// ``onPlatter(removingMaterials:)``.
     ///
-    /// Only components are packed by ``onPlatter(removingMaterials:separatingParts:)``; plain Cadova
+    /// Only components are packed by ``onPlatter(removingMaterials:)``; plain Cadova
     /// ``Cadova/Geometry3D/inPart(_:)`` parts are left out. Marking several pieces of geometry with the
     /// same component merges them into one, the way Cadova's ``Cadova/Part`` does.
     ///
@@ -153,7 +154,7 @@ public extension Geometry3D {
     /// ``Cadova/Geometry3D/definingNaturalUpDirection(_:)``.
     ///
     /// Any ``Component/slicerSettings`` work whether or not the component goes through
-    /// ``onPlatter(removingMaterials:separatingParts:)`` — if it does, the settings follow whatever final
+    /// ``onPlatter(removingMaterials:)`` — if it does, the settings follow whatever final
     /// part(s) packing produces (e.g. numbered copies for a `quantity` above 1).
     ///
     /// - Parameter component: The component this geometry belongs to.
@@ -188,23 +189,24 @@ public extension Geometry3D {
     ///   - name: The name of the component, as it appears in the output file.
     ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up when
     ///     the component is printed. Defaults to `.up`.
-    ///   - quantity: The number of copies to lay out on the platter. Values below 1 are treated as 1.
+    ///   - platter: Options that only apply once the component is laid out on a platter, such as
+    ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
     ///   - slicerSettings: Per-object slicer settings written into the platter's config sidecars
     ///     (e.g. `[.infillDensity(15)]`), for both Bambu Studio and PrusaSlicer and their forks. See
-    ///     ``onPlatter(removingMaterials:separatingParts:)``.
+    ///     ``onPlatter(removingMaterials:)``.
     /// - Returns: The geometry declared as a named printable component.
     func inComponent(
         name: String,
         upDirection: Direction3D = .up,
-        quantity: Int = 1,
+        platter: PlatterOptions = .default,
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) -> any Geometry3D {
         inComponent(Component(
             name,
             upDirection: upDirection,
-            quantity: quantity,
+            platter: platter,
             color: color,
             slicerSettings: slicerSettings
         ))
@@ -212,7 +214,7 @@ public extension Geometry3D {
 
     /// Lays out every printable component in this geometry on a single platter for 3D printing.
     ///
-    /// Each component — declared with ``inComponent(_:)`` or ``inComponent(name:upDirection:quantity:color:slicerSettings:)``
+    /// Each component — declared with ``inComponent(_:)`` or ``inComponent(name:upDirection:platter:color:slicerSettings:)``
     /// — is rotated so its declared up direction points to +Z, dropped so it rests on
     /// the `z = 0` plane, and then packed together with the others using the no-fit polygon nester.
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
@@ -234,19 +236,14 @@ public extension Geometry3D {
     ///   - removingMaterials: When `true`, strips all colors and materials from the packed result — both
     ///     those applied within each component and the parts' default materials — so the platter prints
     ///     as a single uniform material. Defaults to `false`, preserving each component's materials.
-    ///   - separatingParts: When `true` (the default), each component is split into its disconnected
-    ///     solids and every solid is packed and placed individually (as its own part) — disconnected
-    ///     solids are separate physical objects and pack tighter on their own. Set to `false` to keep a
-    ///     component's solids together as one rigid unit (e.g. when their relative arrangement matters).
     /// - Returns: The components packed onto a platter, each preserved as its own part.
-    func onPlatter(removingMaterials: Bool = false, separatingParts: Bool = true) -> any Geometry3D {
+    func onPlatter(removingMaterials: Bool = false) -> any Geometry3D {
         evaluating { base, evaluator in
             @Environment(\.footprintMargin) var margin
             let placed = await packComponents(
                 of: base,
                 using: evaluator,
                 margin: margin,
-                separatingParts: separatingParts,
                 removingMaterials: removingMaterials
             )
             for component in placed { component }
@@ -261,7 +258,6 @@ private func packComponents(
     of base: any Geometry3D,
     using evaluator: GeometryEvaluator,
     margin: Double,
-    separatingParts: Bool,
     removingMaterials: Bool
 ) async -> [any Geometry3D] {
     let partGeometries = await evaluator.parts(of: base, ofType: .solid)
@@ -299,18 +295,19 @@ private func packComponents(
         }
 
         // The component count is orientation-independent, so read it from the plain geometry.
-        let componentCount = separatingParts ? await evaluator.components(of: geometry).count : 1
+        let separateSolids = data.component.platter.separateSolids
+        let componentCount = separateSolids ? await evaluator.components(of: geometry).count : 1
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // pack and would otherwise produce an empty part).
         var componentIndices: [Int?] = []
         for solidIndex in 0 ..< Swift.max(componentCount, 1) {
-            let componentIndex: Int? = separatingParts ? solidIndex : nil
+            let componentIndex: Int? = separateSolids ? solidIndex : nil
             if await evaluator.isEmpty(orientedBody(componentIndex: componentIndex, placement: .identity)) { continue }
             componentIndices.append(componentIndex)
         }
-        let total = data.component.quantity * componentIndices.count
+        let total = data.component.platter.quantity * componentIndices.count
         var copy = 0
-        for _ in 0 ..< data.component.quantity {
+        for _ in 0 ..< data.component.platter.quantity {
             for componentIndex in componentIndices {
                 let copyPart = partForCopy(of: part, index: copy, total: total)
                 entries.append(ComponentEntry(

@@ -9,4 +9,5 @@ final class BoundsCapture: @unchecked Sendable {
     var topSurfaceHitCount: Int?
     var partsOverlap: Bool?
     var partWasPacked: Bool?
+    var partNames: Set<String>?
 }

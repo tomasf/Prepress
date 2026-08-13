@@ -5,7 +5,7 @@ import Cadova
 
 struct PlatterTests {
     @Test func `platter orients a component that contains a nested part`() async throws {
-        let main = Component("Main", upDirection: .right)
+        let main = Component("Main", upDirection: .right, platter: .init(separateSolids: false))
         let nestedPart = Part("Nested")
         let capture = BoundsCapture()
 
@@ -19,7 +19,7 @@ struct PlatterTests {
             }
             .inComponent(main)
             .rotated(x: 90°)
-            .onPlatter(separatingParts: false)
+            .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 capture.bounds = await evaluator.bounds(of: parts[main.part]!)
@@ -43,7 +43,7 @@ struct PlatterTests {
             .definingNaturalUpDirection(.up)
             .inPart(part)
             .rotated(x: 90°)
-            .onPlatter(separatingParts: false)
+            .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 capture.partWasPacked = parts[part] != nil
@@ -58,8 +58,8 @@ struct PlatterTests {
     }
 
     @Test func `nested component is packed with its own up direction`() async throws {
-        let outer = Component("Outer", upDirection: .up)
-        let nested = Component("Nested", upDirection: .up)
+        let outer = Component("Outer", upDirection: .up, platter: .init(separateSolids: false))
+        let nested = Component("Nested", upDirection: .up, platter: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         // A component nested inside another component is packed on its own, oriented by its own
@@ -71,7 +71,7 @@ struct PlatterTests {
             }
             .inComponent(outer)
             .rotated(x: 90°)
-            .onPlatter(separatingParts: false)
+            .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 capture.bounds = await evaluator.bounds(of: parts[nested.part]!)
@@ -86,7 +86,7 @@ struct PlatterTests {
     }
 
     @Test func `platter does not mirror a part across its declared up direction`() async throws {
-        let component = Component("Asymmetric", upDirection: .up)
+        let component = Component("Asymmetric", upDirection: .up, platter: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         let platter = Box(x: 10, y: 10, z: 10)
@@ -98,7 +98,7 @@ struct PlatterTests {
             }
             .inComponent(component)
             .rotated(x: 90°)
-            .onPlatter(separatingParts: false)
+            .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
                 let partGeometry = parts[component.part]!
@@ -132,6 +132,37 @@ struct PlatterTests {
 
         #expect(abs((capture.bounds?.size.z ?? 0) - 12) < 1e-6)
         #expect((capture.bottomSurfaceHitCount ?? 0) > (capture.topSurfaceHitCount ?? 0))
+    }
+
+    @Test func `solid separation is decided per component`() async throws {
+        // The point of moving this onto the component: one component can keep its solids together as a
+        // rigid unit while another in the same platter is split apart. As a single option on
+        // onPlatter it was all or nothing.
+        let split = Component("Split", upDirection: .up)
+        let whole = Component("Whole", upDirection: .up, platter: .init(separateSolids: false))
+        let capture = BoundsCapture()
+
+        let platter = Box(10)
+            .adding { Box(10).translated(x: 40) }
+            .inComponent(split)
+            .adding {
+                Box(10).translated(y: 60)
+                    .adding { Box(10).translated(x: 40, y: 60) }
+                    .inComponent(whole)
+            }
+            .onPlatter()
+            .evaluating { geometry, evaluator in
+                let parts = await evaluator.parts(of: geometry)
+                // The split component becomes two numbered parts; the whole one stays single.
+                capture.partNames = Set(parts.keys.map(\.name))
+                return geometry
+            }
+
+        _ = try await ModelFileGenerator.build { platter }
+
+        let names = try #require(capture.partNames)
+        #expect(names.contains("Split 1") && names.contains("Split 2"))
+        #expect(names.contains("Whole"))
     }
 
     @Test func `platter packs reoriented parts without overlap in a rotated assembly`() async throws {

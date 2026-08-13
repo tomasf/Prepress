@@ -17,7 +17,7 @@ func components() -> any Geometry3D {
 
     // Four of these are needed, so one component produces four copies on the platter.
     Cylinder(diameter: 26, height: 14).withSegmentation(count: 6)
-        .inComponent(name: "Hex", quantity: 4)
+        .inComponent(name: "Hex", platter: .init(quantity: 4))
 
     // A tall pillar that should be printed lying on its side: its +X face points up while printing,
     // so `onPlatter` tips it down flat before packing.

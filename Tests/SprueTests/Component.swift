@@ -9,21 +9,21 @@ struct ComponentTests {
         // precedence, and a nil (plain part) never clobbers a real value.
         #expect(ComponentData().value == nil)
 
-        let inner = ComponentData(.init(component: Component("Inner", quantity: 2), transform: .identity))
-        let outer = ComponentData(.init(component: Component("Outer", upDirection: .down, quantity: 7), transform: .identity))
-        #expect(ComponentData(combining: [inner, outer]).value?.component.quantity == 7)
-        #expect(ComponentData(combining: [inner, ComponentData()]).value?.component.quantity == 2)
+        let inner = ComponentData(.init(component: Component("Inner", platter: .init(quantity: 2)), transform: .identity))
+        let outer = ComponentData(.init(component: Component("Outer", upDirection: .down, platter: .init(quantity: 7)), transform: .identity))
+        #expect(ComponentData(combining: [inner, outer]).value?.component.platter.quantity == 7)
+        #expect(ComponentData(combining: [inner, ComponentData()]).value?.component.platter.quantity == 2)
     }
 
     @Test func `inComponent overloads compile`() {
         _ = Box(1)
             .inComponent(name: "Sideways", upDirection: .right)
         _ = Box(1)
-            .inComponent(name: "Many", quantity: 3)
+            .inComponent(name: "Many", platter: .init(quantity: 3))
         _ = Box(1)
             .inComponent(Component("Custom", upDirection: .forward))
         _ = Box(1)
-            .inComponent(Component("Repeated", quantity: 2))
+            .inComponent(Component("Repeated", platter: .init(quantity: 2)))
         _ = Box(1)
             .inComponent(Component("Metallic", material: .init(baseColor: .red, metallicness: 1, roughness: 0.2)))
 
@@ -48,7 +48,9 @@ struct ComponentTests {
         #expect(reused.name == "Reused")
 
         // Quantity is clamped on the way in, so the packer never sees a nonsensical count.
-        #expect(Component("None", quantity: 0).quantity == 1)
-        #expect(Component("Negative", quantity: -3).quantity == 1)
+        #expect(Component("None", platter: .init(quantity: 0)).platter.quantity == 1)
+        #expect(Component("Negative", platter: .init(quantity: -3)).platter.quantity == 1)
+        #expect(PlatterOptions.default.quantity == 1)
+        #expect(PlatterOptions.default.separateSolids)
     }
 }
