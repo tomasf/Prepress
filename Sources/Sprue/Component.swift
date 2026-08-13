@@ -1,47 +1,46 @@
 import Foundation
 @_spi(ArchiveFinalizer) import Cadova
 
-/// A printable component: a self-contained piece of a model, together with what's needed to print it —
-/// which way is up, how many copies to lay out, and any per-object slicer settings.
+/// A printable component: one piece of a model that's printed on its own, together with what's needed
+/// to print it — how many copies to lay out and any per-object slicer settings.
 ///
-/// Create a component once and mark geometry with it, the way Cadova's ``Cadova/Part`` works:
+/// A component is an identity you attach to geometry, the way Cadova's ``Cadova/Part`` works:
 ///
 /// ```swift
-/// let bracket = Component("Bracket", upDirection: .right, platter: .init(quantity: 4))
+/// let bracket = Component("Bracket", platter: .init(quantity: 4))
 ///
 /// Box(10)
-///     .inComponent(bracket)
+///     .inComponent(bracket, upDirection: .right)
 /// ```
 ///
-/// A component owns the ``Cadova/Part`` its geometry is emitted into and creates it privately, so each
-/// component you create is a distinct part even when two share a name, and no two components can be
-/// handed the same part — which would silently merge them into one object in the output. Marking
-/// several pieces of geometry with the *same* component instance does merge them, deliberately: that's
-/// how one component is built out of several bodies.
+/// Which way is up is deliberately *not* part of the component. It belongs to each
+/// ``Cadova/Geometry3D/inComponent(_:upDirection:)`` declaration, because it describes how that
+/// particular body sits in the model rather than what the part is. That's what lets one component mark
+/// several bodies scattered through an assembly at different orientations, with each stood up
+/// correctly on the platter.
+///
+/// Each declaration is laid out as its own piece. Two components that share a name are still separate,
+/// and there's deliberately no way to build a component around an existing ``Cadova/Part``, which is
+/// what keeps two components from ever colliding in the output.
 public struct Component: Sendable {
-    /// The part this component's geometry is emitted into.
-    ///
-    /// Read-only on purpose: it's here so a component can be used with Cadova APIs that take a
-    /// ``Cadova/Part`` (``Cadova/Geometry/detachingPart(_:_:)``, looking geometry up in the part
-    /// catalog, and so on). There's deliberately no way to go the other way and build a component
-    /// around an existing part, which is what keeps two components from ever sharing one.
-    public let part: Part
+    /// Distinguishes this component from every other, including ones sharing its name.
+    internal let id = UUID()
 
-    /// Already collapsed to one value per key, per slicer flavor, in declaration order.
-    internal let slicerSettings: ResolvedSlicerSettings
+    /// The name of the component, as it appears in the output file.
+    public let name: String
 
-    /// The direction, in the geometry's own coordinate system, that points up when the component is printed.
-    public let upDirection: Direction3D
+    /// The default material for geometry in this component that doesn't specify its own.
+    internal let material: Material?
 
     /// The parts of this component's configuration that only apply once it's laid out on a platter.
     public let platter: PlatterOptions
 
-    /// The name of the component, as it appears in the output file.
-    public var name: String { part.name }
+    /// Already collapsed to one value per key, per slicer flavor, in declaration order.
+    internal let slicerSettings: ResolvedSlicerSettings
 
-    private init(part: Part, upDirection: Direction3D, platter: PlatterOptions, slicerSettings: [SlicerSetting]) {
-        self.part = part
-        self.upDirection = upDirection
+    private init(name: String, material: Material?, platter: PlatterOptions, slicerSettings: [SlicerSetting]) {
+        self.name = name
+        self.material = material
         self.platter = platter
         self.slicerSettings = slicerSettings.resolved
     }
@@ -50,8 +49,6 @@ public struct Component: Sendable {
     ///
     /// - Parameters:
     ///   - name: The name of the component, as it appears in the output file.
-    ///   - upDirection: The direction, in the geometry's own coordinate system, that should point up when
-    ///     the component is printed. Defaults to `.up`.
     ///   - platter: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
@@ -61,14 +58,13 @@ public struct Component: Sendable {
     ///     Print, …) as well as PrusaSlicer and SuperSlicer.
     public init(
         _ name: String,
-        upDirection: Direction3D = .up,
         platter: PlatterOptions = .default,
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) {
         self.init(
-            part: Part(name, semantic: .solid, color: color),
-            upDirection: upDirection,
+            name: name,
+            material: color.map { Material.plain($0) },
             platter: platter,
             slicerSettings: slicerSettings
         )
@@ -76,37 +72,33 @@ public struct Component: Sendable {
 
     /// Creates a component with a physically-based default material.
     ///
-    /// See ``init(_:upDirection:platter:color:slicerSettings:)``.
+    /// See ``init(_:platter:color:slicerSettings:)``.
     public init(
         _ name: String,
-        upDirection: Direction3D = .up,
         platter: PlatterOptions = .default,
         material: Material?,
         slicerSettings: [SlicerSetting] = []
     ) {
-        self.init(
-            part: Part(name, semantic: .solid, material: material),
-            upDirection: upDirection,
-            platter: platter,
-            slicerSettings: slicerSettings
-        )
+        self.init(name: name, material: material, platter: platter, slicerSettings: slicerSettings)
     }
 }
 
 /// Records that a piece of geometry is a printable ``Component`` that
 /// ``Cadova/Geometry3D/onPlatter(removingMaterials:)`` orients, multiplies and packs.
 ///
-/// Only geometry explicitly declared with ``Cadova/Geometry3D/inComponent(_:)`` (or its `name:` variant)
+/// Only geometry explicitly declared with ``Cadova/Geometry3D/inComponent(_:upDirection:)`` (or its `name:` variant)
 /// carries this; the platter ignores everything else, including plain Cadova
 /// ``Cadova/Geometry3D/inPart(_:)`` parts. A part with no declared print orientation can't be oriented
 /// meaningfully, so it's left out rather than dropped onto the bed in an arbitrary rotation.
 ///
-/// The component is stored together with the environment transform in effect where it was declared, so
-/// the packer can re-express its up direction in whatever frame it reads — keeping orientation correct
-/// even when an enclosing assembly is transformed afterwards.
+/// The up direction is stored together with the environment transform in effect where it was declared,
+/// so the packer can re-express it in whatever frame it reads — keeping orientation correct even when
+/// an enclosing assembly is transformed afterwards. Since each declaration emits into its own part,
+/// the pair always describes the geometry it's attached to, never a sibling body of the same component.
 struct ComponentData: ResultElement {
     struct Value: Sendable {
         var component: Component
+        var upDirection: Direction3D
         var transform: Transform3D
 
         /// Re-expresses the declared up direction in a reading frame. The direction was captured together
@@ -114,7 +106,7 @@ struct ComponentData: ResultElement {
         /// keeps it correct under transforms applied in between (e.g. an enclosing assembly rotation).
         func resolvedUpDirection(in readingTransform: Transform3D) -> Direction3D {
             let t = transform.concatenated(with: readingTransform.inverse)
-            return Direction3D(t.apply(to: component.upDirection.unitVector) - t.offset)
+            return Direction3D(t.apply(to: upDirection.unitVector) - t.offset)
         }
     }
 
@@ -128,55 +120,62 @@ struct ComponentData: ResultElement {
     init(combining elements: [ComponentData]) { value = elements.compactMap(\.value).last }
 }
 
-/// Builds a distinct part for one copy of a multiplied component, numbering the name when there is
-/// more than one so each copy stays individually selectable in a slicer.
-private func partForCopy(of part: Part, index: Int, total: Int) -> Part {
-    guard total > 1 else { return part }
-    return Part("\(part.name) \(index + 1)", semantic: part.semantic, material: part.defaultMaterial)
-}
-
 private struct ComponentEntry {
-    let part: Part
+    let component: Component
     let packingBody: any Geometry3D
     let placedBody: (Transform2D) -> any Geometry3D
-    let slicerSettings: ResolvedSlicerSettings
 }
 
 public extension Geometry3D {
     /// Declares this geometry as the given printable component, for
     /// ``onPlatter(removingMaterials:)``.
     ///
-    /// Only components are packed by ``onPlatter(removingMaterials:)``; plain Cadova
-    /// ``Cadova/Geometry3D/inPart(_:)`` parts are left out. Marking several pieces of geometry with the
-    /// same component merges them into one, the way Cadova's ``Cadova/Part`` does.
+    /// Only components are laid out by ``onPlatter(removingMaterials:)``; plain Cadova
+    /// ``Cadova/Geometry3D/inPart(_:)`` parts are left out.
     ///
-    /// The component's up direction also informs Cadova's overhang compensation within the geometry, via
-    /// ``Cadova/Geometry3D/definingNaturalUpDirection(_:)``.
+    /// Each declaration is its own piece. Marking several bodies with the same component is how one
+    /// component appears in several places in an assembly — each keeps the orientation and the frame of
+    /// the place it was declared, so each is stood up correctly, and they're named after the component
+    /// and numbered in the output.
+    ///
+    /// `upDirection` also informs Cadova's overhang compensation within the geometry, via
+    /// ``Cadova/Geometry3D/definingNaturalUpDirection(_:)``, so features inside are built for the
+    /// orientation the piece is printed in.
     ///
     /// Any ``Component/slicerSettings`` work whether or not the component goes through
     /// ``onPlatter(removingMaterials:)`` — if it does, the settings follow whatever final
-    /// part(s) packing produces (e.g. numbered copies for a `quantity` above 1).
+    /// part(s) the layout produces (e.g. numbered copies for a `quantity` above 1).
     ///
-    /// - Parameter component: The component this geometry belongs to.
+    /// - Parameters:
+    ///   - component: The component this geometry belongs to.
+    ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up
+    ///     when it's printed. Defaults to `.up`.
     /// - Returns: The geometry declared as that printable component.
-    func inComponent(_ component: Component) -> any Geometry3D {
+    func inComponent(_ component: Component, upDirection: Direction3D = .up) -> any Geometry3D {
+        // A fresh part per declaration, so two bodies of one component stay distinguishable all the way
+        // to the platter. Sharing one part would merge them, and only one declaration's frame could
+        // survive — which used to leave every body but one tilted.
+        let part = Part(component.name, semantic: .solid, material: component.material)
+
         // `definingNaturalUpDirection` keeps Cadova's overhang compensation working inside the component;
         // the `ComponentData` result element is what the packer reads. The transform in effect here is
-        // captured with the component so the packer can resolve its up direction in its own frame.
-        var geometry = definingNaturalUpDirection(component.upDirection)
+        // captured alongside the up direction so the packer can resolve it in its own frame.
+        var geometry = definingNaturalUpDirection(upDirection)
             .readingEnvironment(\.transform) { geometry, transform in
-                geometry.withResult(ComponentData(.init(component: component, transform: transform)))
+                geometry.withResult(ComponentData(.init(
+                    component: component, upDirection: upDirection, transform: transform
+                )))
             }
 
         if !component.slicerSettings.isEmpty {
             geometry = geometry
                 .modifyingResult(SlicerSettingsEntries.self) {
-                    $0.entries.append((component.part, component.slicerSettings))
+                    $0.entries.append((part, component.slicerSettings))
                 }
                 .withArchiveFinalizer { try await SlicerSettingsEntries.writeConfigsIfNeeded(to: $0) }
         }
 
-        return geometry.inPart(component.part)
+        return geometry.inPart(part)
     }
 
     /// Declares this geometry as a printable component, creating the component in place.
@@ -203,18 +202,15 @@ public extension Geometry3D {
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) -> any Geometry3D {
-        inComponent(Component(
-            name,
-            upDirection: upDirection,
-            platter: platter,
-            color: color,
-            slicerSettings: slicerSettings
-        ))
+        inComponent(
+            Component(name, platter: platter, color: color, slicerSettings: slicerSettings),
+            upDirection: upDirection
+        )
     }
 
     /// Lays out every printable component in this geometry on a single platter for 3D printing.
     ///
-    /// Each component — declared with ``inComponent(_:)`` or ``inComponent(name:upDirection:platter:color:slicerSettings:)``
+    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platter:color:slicerSettings:)``
     /// — is rotated so its declared up direction points to +Z, dropped so it rests on
     /// the `z = 0` plane, and then packed together with the others using the no-fit polygon nester.
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
@@ -261,21 +257,26 @@ private func packComponents(
     removingMaterials: Bool
 ) async -> [any Geometry3D] {
     let partGeometries = await evaluator.parts(of: base, ofType: .solid)
-    let parts = partGeometries.keys.sorted { $0.name < $1.name } // stable layout order
+
+    // Only declared components participate. Parts with no component data (plain Cadova parts) are
+    // skipped rather than guessed at. Reading the data first also gives a stable layout order: several
+    // declarations of one component share a name, so position in the assembly breaks the tie.
+    var declarations: [(geometry: any Geometry3D, data: ComponentData.Value)] = []
+    for (_, partGeometry) in partGeometries {
+        guard let data = await evaluator.result(ComponentData.self, of: partGeometry).value else { continue }
+        // The catalog exposes nested parts flattened at the top level, so each is laid out on its own.
+        // Strip any nested parts (of every semantic) so they don't ride along.
+        let geometry = PartSemantic.allCases.reduce(partGeometry) { $0.removingParts(ofType: $1) }
+        declarations.append((geometry, data))
+    }
+    declarations.sort {
+        ($0.data.component.name, $0.data.transform.offset.x, $0.data.transform.offset.y, $0.data.transform.offset.z)
+            < ($1.data.component.name, $1.data.transform.offset.x, $1.data.transform.offset.y, $1.data.transform.offset.z)
+    }
 
     var entries: [ComponentEntry] = []
-    for part in parts {
-        let partGeometry = partGeometries[part]!
-        // Only declared components participate. A component applies its own declaration outermost, so the
-        // combined value (last wins) is this part's own — a nested component that bubbled up doesn't shadow
-        // it. Parts with no component data (plain Cadova parts) are skipped rather than guessed at.
-        guard let data = await evaluator.result(ComponentData.self, of: partGeometry).value else { continue }
-
-        // The catalog exposes nested parts flattened at the top level, so each is packed on its own. Strip
-        // any nested parts (of every semantic) from this part's geometry so they don't ride along.
-        let geometry = PartSemantic.allCases.reduce(partGeometry) { $0.removingParts(ofType: $1) }
-
-        // Orients one disconnected solid (or the whole body), drops it to z = 0, and applies the 2D packing
+    for (geometry, data) in declarations {
+        // Orients one disconnected solid (or the whole body), drops it to z = 0, and applies the 2D layout
         // transform. Both the packing footprint and the final placed body come from this single function,
         // so they can never diverge — resolving the orientation in two places once let the footprint and
         // the placed body disagree, and parts overlapped.
@@ -294,57 +295,68 @@ private func packComponents(
             }
         }
 
-        // The component count is orientation-independent, so read it from the plain geometry.
+        // The solid count is orientation-independent, so read it from the plain geometry.
         let separateSolids = data.component.platter.separateSolids
-        let componentCount = separateSolids ? await evaluator.components(of: geometry).count : 1
+        let solidCount = separateSolids ? await evaluator.components(of: geometry).count : 1
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
-        // pack and would otherwise produce an empty part).
-        var componentIndices: [Int?] = []
-        for solidIndex in 0 ..< Swift.max(componentCount, 1) {
+        // lay out and would otherwise produce an empty part).
+        var solidIndices: [Int?] = []
+        for solidIndex in 0 ..< Swift.max(solidCount, 1) {
             let componentIndex: Int? = separateSolids ? solidIndex : nil
             if await evaluator.isEmpty(orientedBody(componentIndex: componentIndex, placement: .identity)) { continue }
-            componentIndices.append(componentIndex)
+            solidIndices.append(componentIndex)
         }
-        let total = data.component.platter.quantity * componentIndices.count
-        var copy = 0
+
         for _ in 0 ..< data.component.platter.quantity {
-            for componentIndex in componentIndices {
-                let copyPart = partForCopy(of: part, index: copy, total: total)
+            for componentIndex in solidIndices {
                 entries.append(ComponentEntry(
-                    part: copyPart,
+                    component: data.component,
                     packingBody: orientedBody(componentIndex: componentIndex, placement: .identity),
                     placedBody: { transform in
                         orientedBody(componentIndex: componentIndex, placement: transform)
-                    },
-                    slicerSettings: data.component.slicerSettings
+                    }
                 ))
-                copy += 1
             }
         }
     }
 
-    // Pack the real bodies (footprints need real geometry), then re-wrap each in its part.
+    // Number the output parts per component, across every declaration, solid and copy it produced, so a
+    // component that ends up as several pieces stays individually selectable in a slicer.
+    var indicesByComponent: [UUID: [Int]] = [:]
+    for (index, entry) in entries.enumerated() {
+        indicesByComponent[entry.component.id, default: []].append(index)
+    }
+    var names = [String](repeating: "", count: entries.count)
+    for (_, indices) in indicesByComponent {
+        for (number, index) in indices.enumerated() {
+            let name = entries[index].component.name
+            names[index] = indices.count > 1 ? "\(name) \(number + 1)" : name
+        }
+    }
+
+    // Lay out the real bodies (footprints need real geometry), then re-wrap each in its own part.
     let packer = Packer(bodies: entries.map(\.packingBody), margin: margin, footprintDetail: 24)
     let transforms = await packer.placements(using: evaluator)
 
-    return zip(entries, transforms).map { entry, transform -> any Geometry3D in
-        let placed = entry.placedBody(transform)
+    return entries.indices.map { index -> any Geometry3D in
+        let entry = entries[index]
+        let placed = entry.placedBody(transforms[index])
 
-        // removingMaterials emits into a freshly named, material-less part rather than `entry.part`. The
-        // settings re-declaration below must key off whichever `Part` instance actually ends up in the
-        // output — inComponent's own declaration (against the pre-packing part) won't resolve to a real
-        // object id once packing has renamed or copied it, so it's this final identity that matters.
-        let outputPart: Part
-        let result: any Geometry3D
-        if removingMaterials {
-            outputPart = Part(entry.part.name, semantic: entry.part.semantic, material: nil)
-            result = placed.withoutMaterials().inPart(outputPart)
-        } else {
-            outputPart = entry.part
-            result = placed.inPart(outputPart)
-        }
+        // The settings re-declaration below must key off whichever `Part` instance actually ends up in
+        // the output — inComponent's own declaration (against the pre-layout part) won't resolve to a
+        // real object id once the layout has renamed or copied it, so it's this final identity that
+        // matters. removingMaterials drops the default material from that part as well as stripping the
+        // ones applied within the component.
+        let outputPart = Part(
+            names[index],
+            semantic: .solid,
+            material: removingMaterials ? nil : entry.component.material
+        )
+        let result = removingMaterials
+            ? placed.withoutMaterials().inPart(outputPart)
+            : placed.inPart(outputPart)
 
-        let settings = entry.slicerSettings
+        let settings = entry.component.slicerSettings
         guard !settings.isEmpty else { return result }
         return result.modifyingResult(SlicerSettingsEntries.self) {
             $0.entries.append((outputPart, settings))

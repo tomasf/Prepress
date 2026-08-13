@@ -5,7 +5,7 @@ import Cadova
 
 struct PlatterTests {
     @Test func `platter orients a component that contains a nested part`() async throws {
-        let main = Component("Main", upDirection: .right, platter: .init(separateSolids: false))
+        let main = Component("Main", platter: .init(separateSolids: false))
         let nestedPart = Part("Nested")
         let capture = BoundsCapture()
 
@@ -17,12 +17,12 @@ struct PlatterTests {
                 Box(2)
                     .inPart(nestedPart)
             }
-            .inComponent(main)
+            .inComponent(main, upDirection: .right)
             .rotated(x: 90°)
             .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
-                capture.bounds = await evaluator.bounds(of: parts[main.part]!)
+                capture.bounds = await evaluator.bounds(of: parts.first { $0.key.name == "Main" }!.value)
                 return geometry
             }
 
@@ -58,8 +58,8 @@ struct PlatterTests {
     }
 
     @Test func `nested component is packed with its own up direction`() async throws {
-        let outer = Component("Outer", upDirection: .up, platter: .init(separateSolids: false))
-        let nested = Component("Nested", upDirection: .up, platter: .init(separateSolids: false))
+        let outer = Component("Outer", platter: .init(separateSolids: false))
+        let nested = Component("Nested", platter: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         // A component nested inside another component is packed on its own, oriented by its own
@@ -74,7 +74,7 @@ struct PlatterTests {
             .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
-                capture.bounds = await evaluator.bounds(of: parts[nested.part]!)
+                capture.bounds = await evaluator.bounds(of: parts.first { $0.key.name == "Nested" }!.value)
                 return geometry
             }
 
@@ -86,7 +86,7 @@ struct PlatterTests {
     }
 
     @Test func `platter does not mirror a part across its declared up direction`() async throws {
-        let component = Component("Asymmetric", upDirection: .up, platter: .init(separateSolids: false))
+        let component = Component("Asymmetric", platter: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         let platter = Box(x: 10, y: 10, z: 10)
@@ -101,7 +101,7 @@ struct PlatterTests {
             .onPlatter()
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
-                let partGeometry = parts[component.part]!
+                let partGeometry = parts.first { $0.key.name == "Asymmetric" }!.value
                 let bounds = await evaluator.bounds(of: partGeometry)!
                 capture.bounds = bounds
                 var bottomHits = 0
@@ -134,12 +134,51 @@ struct PlatterTests {
         #expect((capture.bottomSurfaceHitCount ?? 0) > (capture.topSurfaceHitCount ?? 0))
     }
 
+    @Test func `each declaration of one component is oriented on its own`() async throws {
+        // Regression: two bodies of the same component, tilted differently in the assembly. The
+        // orientation used to be captured once per *part*, last declaration winning, and applied to the
+        // whole merged geometry — so every body but one came out of the platter still tilted. Each
+        // declaration now emits into its own part and carries its own frame.
+        let tube = Component("Tube")
+        let capture = BoundsCapture()
+
+        let platter = Stack(.x, spacing: 1) {
+            Cylinder(diameter: 5, height: 50)
+                .inComponent(tube)
+                .rotated(x: 20°)
+
+            Cylinder(diameter: 6, height: 30)
+                .inComponent(tube)
+                .rotated(y: -15°)
+        }
+        .onPlatter()
+        .evaluating { geometry, evaluator in
+            var sizes: [String: Vector3D] = [:]
+            for (part, partGeometry) in await evaluator.parts(of: geometry) {
+                sizes[part.name] = await evaluator.bounds(of: partGeometry)?.size
+            }
+            capture.sizes = sizes
+            return geometry
+        }
+
+        _ = try await ModelFileGenerator.build { platter }
+
+        // Both stand upright: full length in Z, and a footprint no wider than the diameter.
+        let sizes = try #require(capture.sizes)
+        #expect(sizes.count == 2)
+        for (name, size) in sizes {
+            let diameter = abs(size.z - 50) < 1e-3 ? 5.0 : 6.0
+            #expect(abs(size.z - (diameter == 5 ? 50 : 30)) < 1e-3, "\(name) is \(size.z) tall")
+            #expect(size.x < diameter + 0.1 && size.y < diameter + 0.1, "\(name) footprint is \(size)")
+        }
+    }
+
     @Test func `solid separation is decided per component`() async throws {
         // The point of moving this onto the component: one component can keep its solids together as a
         // rigid unit while another in the same platter is split apart. As a single option on
         // onPlatter it was all or nothing.
-        let split = Component("Split", upDirection: .up)
-        let whole = Component("Whole", upDirection: .up, platter: .init(separateSolids: false))
+        let split = Component("Split")
+        let whole = Component("Whole", platter: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         let platter = Box(10)
@@ -172,8 +211,8 @@ struct PlatterTests {
         // footprint was built from a separately-resolved orientation, the disc was packed as if
         // standing on edge (a narrow footprint) but laid flat when placed — so the flat disc spilled
         // over its neighbor. The two solid parts must not intersect after packing.
-        let disc = Component("Disc", upDirection: .up)
-        let block = Component("Block", upDirection: .up)
+        let disc = Component("Disc")
+        let block = Component("Block")
         let capture = BoundsCapture()
 
         let platter = Cylinder(diameter: 120, height: 50)
@@ -192,8 +231,8 @@ struct PlatterTests {
             .withComponentSpacing(4)
             .evaluating { geometry, evaluator in
                 let parts = await evaluator.parts(of: geometry)
-                let discGeometry = parts[disc.part]!
-                let blockGeometry = parts[block.part]!
+                let discGeometry = parts.first { $0.key.name == "Disc" }!.value
+                let blockGeometry = parts.first { $0.key.name == "Block" }!.value
                 capture.partsOverlap = !(await evaluator.isEmpty(discGeometry.intersecting(blockGeometry)))
                 return geometry
             }

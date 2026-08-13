@@ -9,8 +9,12 @@ struct ComponentTests {
         // precedence, and a nil (plain part) never clobbers a real value.
         #expect(ComponentData().value == nil)
 
-        let inner = ComponentData(.init(component: Component("Inner", platter: .init(quantity: 2)), transform: .identity))
-        let outer = ComponentData(.init(component: Component("Outer", upDirection: .down, platter: .init(quantity: 7)), transform: .identity))
+        let inner = ComponentData(.init(
+            component: Component("Inner", platter: .init(quantity: 2)), upDirection: .up, transform: .identity
+        ))
+        let outer = ComponentData(.init(
+            component: Component("Outer", platter: .init(quantity: 7)), upDirection: .down, transform: .identity
+        ))
         #expect(ComponentData(combining: [inner, outer]).value?.component.platter.quantity == 7)
         #expect(ComponentData(combining: [inner, ComponentData()]).value?.component.platter.quantity == 2)
     }
@@ -21,7 +25,7 @@ struct ComponentTests {
         _ = Box(1)
             .inComponent(name: "Many", platter: .init(quantity: 3))
         _ = Box(1)
-            .inComponent(Component("Custom", upDirection: .forward))
+            .inComponent(Component("Custom"), upDirection: .forward)
         _ = Box(1)
             .inComponent(Component("Repeated", platter: .init(quantity: 2)))
         _ = Box(1)
@@ -37,14 +41,13 @@ struct ComponentTests {
             }
     }
 
-    @Test func `each component owns a distinct part`() {
-        // Two components with the same name are still distinct parts, matching Cadova's Part
-        // semantics — and since a Component builds its Part privately, two components can never share
-        // one and collapse into a single object in the output.
-        #expect(Component("Same").part != Component("Same").part)
+    @Test func `each component has a distinct identity`() {
+        // Two components with the same name are still distinct identities, so they can never collapse
+        // into a single object in the output.
+        #expect(Component("Same").id != Component("Same").id)
 
         let reused = Component("Reused")
-        #expect(reused.part == reused.part)
+        #expect(reused.id == reused.id)
         #expect(reused.name == "Reused")
 
         // Quantity is clamped on the way in, so the packer never sees a nonsensical count.

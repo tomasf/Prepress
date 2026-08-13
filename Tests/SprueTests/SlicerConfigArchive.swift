@@ -96,7 +96,7 @@ struct SlicerConfigArchiveTests {
     @Test func `onPlatter embeds both config sidecars for components with slicer settings`() async throws {
         // End-to-end: a component declared with slicerSettings must cause onPlatter() to embed both
         // sidecars, so the one file configures Bambu-lineage slicers and PrusaSlicer alike.
-        let component = Component("Configured", upDirection: .up, slicerSettings: [.infillDensity(15)])
+        let component = Component("Configured", slicerSettings: [.infillDensity(15)])
         let platter = Box(10)
             .inComponent(component)
             .onPlatter()
@@ -147,7 +147,7 @@ struct SlicerConfigArchiveTests {
         // A component configured purely with fork-only settings has nothing to say to PrusaSlicer, so
         // that sidecar must be left out rather than written empty (or, worse, written with keys
         // PrusaSlicer would choke on).
-        let component = Component("Orca Only", upDirection: .up, slicerSettings: [.zContouringEnabled(true)])
+        let component = Component("Orca Only", slicerSettings: [.zContouringEnabled(true)])
         let platter = Box(10)
             .inComponent(component)
             .onPlatter()
@@ -161,7 +161,7 @@ struct SlicerConfigArchiveTests {
 
     @Test func `onPlatter omits configs without slicer settings`() async throws {
         // No component declared slicerSettings, so no sidecar file should be added at all.
-        let component = Component("Plain", upDirection: .up)
+        let component = Component("Plain")
         let platter = Box(10)
             .inComponent(component)
             .onPlatter()
@@ -177,7 +177,7 @@ struct SlicerConfigArchiveTests {
         // slicerSettings must not require onPlatter() — a bare inComponent, exported directly, should
         // still embed the sidecars (inComponent's own part is never renamed/copied without packing,
         // so it resolves to a real object id on its own).
-        let component = Box(10).inComponent(Component("Standalone", upDirection: .up, slicerSettings: [.wallCount(3)]))
+        let component = Box(10).inComponent(Component("Standalone", slicerSettings: [.wallCount(3)]))
 
         let data = try await ModelFileGenerator.build { component }.data()
         let archive = try ZipArchive(data: data)
@@ -190,8 +190,8 @@ struct SlicerConfigArchiveTests {
         // Every component with slicerSettings registers its own archive finalizer independently. With
         // two components in the same export, both run — this must not throw (a naive "just always
         // addFile" implementation would throw ZipError.duplicateFileEntry on the second one).
-        let a = Component("A", upDirection: .up, slicerSettings: [.infillDensity(15)])
-        let b = Component("B", upDirection: .up, slicerSettings: [.infillDensity(80)])
+        let a = Component("A", slicerSettings: [.infillDensity(15)])
+        let b = Component("B", slicerSettings: [.infillDensity(80)])
         let assembly = Box(10)
             .inComponent(a)
             .adding {

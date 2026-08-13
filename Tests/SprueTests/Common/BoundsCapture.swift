@@ -10,4 +10,5 @@ final class BoundsCapture: @unchecked Sendable {
     var partsOverlap: Bool?
     var partWasPacked: Bool?
     var partNames: Set<String>?
+    var sizes: [String: Vector3D]?
 }
