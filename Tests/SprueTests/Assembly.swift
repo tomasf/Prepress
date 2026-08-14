@@ -52,10 +52,18 @@ struct AssemblyTests {
         let objectID = try #require(poses.keys.first)
         let pose = poses[objectID]!
 
+        // Bambu recentres each mesh on its bounding box before applying the pose, so do the same here:
+        // testing against the raw vertices would check a transform the slicer never applies.
         let vertices = try archive.vertices(forObject: objectID)
         #expect(vertices.count > 3)
+        var meshLow = vertices[0], meshHigh = vertices[0]
+        for point in vertices.dropFirst() {
+            meshLow = Vector3D.min(meshLow, point)
+            meshHigh = Vector3D.max(meshHigh, point)
+        }
+        let centre = (meshLow + meshHigh) / 2
 
-        let restored = vertices.map { pose.apply(to: $0) }
+        let restored = vertices.map { pose.apply(to: $0 - centre) }
         var low = restored[0], high = restored[0]
         for point in restored.dropFirst() {
             low = Vector3D.min(low, point)

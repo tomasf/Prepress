@@ -333,12 +333,17 @@ private func packComponents(
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // lay out and would otherwise produce an empty part).
         // How far each upright solid has to fall to rest on z = 0. Measured rather than applied with
-        // `aligned(at: .minZ)` so the drop is part of the transform we can hand back later. Solids that
-        // are empty (an empty component has no footprint to lay out) are skipped here.
+        // `aligned(at: .minZ)` so the drop is part of the transform we can hand back later.
         var drops: [(solidIndex: Int?, drop: Double)] = []
         for solidIndex in 0 ..< Swift.max(solidCount, 1) {
             let index: Int? = separateSolids ? solidIndex : nil
-            guard let bounds = await evaluator.bounds(of: uprightSolid(index)) else { continue }
+            let solid = uprightSolid(index)
+            // Skip solids with nothing to lay out. This is not just about genuinely empty components:
+            // booleans leave degenerate slivers behind, and separating a body hands each of those out
+            // as its own solid. Measuring bounds alone doesn't reject them — a sliver has bounds — so
+            // without this check they reach the plate as parts a slicer will happily try to print.
+            if await evaluator.isEmpty(solid) { continue }
+            guard let bounds = await evaluator.bounds(of: solid) else { continue }
             drops.append((index, bounds.minimum.z))
         }
 
@@ -380,6 +385,22 @@ private func packComponents(
     let packer = Packer(bodies: entries.map(\.packingBody), margin: margin, footprintDetail: 24)
     let transforms = await packer.placements(using: evaluator)
 
+    // The assembled pose each piece is recorded with, which is not simply the inverse of its journey
+    // to the plate. Bambu Studio recentres every mesh it imports on its own bounding box and keeps the
+    // offset in the instance transform (`bbs_3mf.cpp`, add_volume with modify_to_center_geometry, then
+    // the single-volume normalisation). Its assembly view *replaces* that instance transform with the
+    // assembled one, so the centring offset disappears and the pose has to put it back — otherwise
+    // every piece is displaced by its own plate position and the assembly falls apart.
+    var assembledPoses: [Transform3D] = []
+    for index in entries.indices {
+        let placed = entries[index].placedBody(transforms[index])
+        let centre = await evaluator.bounds(of: placed).map { ($0.minimum + $0.maximum) / 2 } ?? .zero
+        assembledPoses.append(
+            Transform3D.translation(centre)
+                .concatenated(with: entries[index].platterTransform(transforms[index]).inverse)
+        )
+    }
+
     return entries.indices.map { index -> any Geometry3D in
         let entry = entries[index]
         let placed = entry.placedBody(transforms[index])
@@ -398,8 +419,7 @@ private func packComponents(
             ? placed.withoutMaterials().inPart(outputPart)
             : placed.inPart(outputPart)
 
-        // Inverted, the platter transform says where this piece belongs in the assembly it came from.
-        let assembledPose = entry.platterTransform(transforms[index]).inverse
+        let assembledPose = assembledPoses[index]
         result = result.modifyingResult(AssemblyPlacements.self) {
             $0.posesByPart[outputPart] = assembledPose
         }

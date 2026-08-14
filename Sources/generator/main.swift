@@ -71,6 +71,10 @@ await Project(packageRelative: "Models") {
             .withComponentSpacing(4)
     }
 
+    await Model("Components assembled") {
+        components()
+    }
+
     await Model("Different Infill Demo") {
         infillDemoComponents()
             .onPlatter()
