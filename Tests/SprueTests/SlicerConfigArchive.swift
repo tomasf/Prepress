@@ -159,8 +159,10 @@ struct SlicerConfigArchiveTests {
         #expect(!archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
     }
 
-    @Test func `onPlatter omits configs without slicer settings`() async throws {
-        // No component declared slicerSettings, so no sidecar file should be added at all.
+    @Test func `a platter without slicer settings writes only the assembled arrangement`() async throws {
+        // No component declared slicerSettings, so there are no settings to write — but a platter
+        // always has an assembled arrangement to record, and that lives in Bambu's file. It must
+        // arrive without any <object> blocks: an object block with no name blanks the name Bambu shows.
         let component = Component("Plain")
         let platter = Box(10)
             .inComponent(component)
@@ -169,7 +171,12 @@ struct SlicerConfigArchiveTests {
         let data = try await ModelFileGenerator.build { platter }.data()
         let archive = try ZipArchive(data: data)
 
-        #expect(!archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+        #expect(archive.hasEntry(at: SlicerSettingsEntries.bambuConfigPath))
+        let bambu = try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+        #expect(bambu.fragments(forTag: "assemble_item").count == 1)
+        #expect(bambu.fragments(forTag: "object").isEmpty)
+
+        // PrusaSlicer has no assembly view, so its sidecar still has nothing to say.
         #expect(!archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
     }
 

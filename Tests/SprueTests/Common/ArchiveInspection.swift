@@ -1,4 +1,5 @@
 import Foundation
+import Cadova
 import Zip
 @testable import Sprue
 
@@ -64,6 +65,50 @@ extension ZipArchive<Data> {
                 .attributeValue("value")
         }
         return names
+    }
+
+    /// The assembled pose Bambu Studio's assembly view reads, per object id.
+    ///
+    /// Parsed back from the 12 column-major values of the `transform` attribute, so a transposed or
+    /// mis-ordered matrix shows up as a wrong pose rather than passing unnoticed.
+    func assembledPoses() throws -> [Int: Transform3D] {
+        var poses: [Int: Transform3D] = [:]
+        for item in try text(at: SlicerSettingsEntries.bambuConfigPath).fragments(forTag: "assemble_item") {
+            guard let id = item.attributeValue("object_id").flatMap(Int.init),
+                  let values = item.attributeValue("transform")?.split(separator: " ").compactMap({ Double($0) }),
+                  values.count == 12
+            else { continue }
+            func element(_ row: Int, _ column: Int) -> Double { values[column * 3 + row] }
+            poses[id] = Transform3D([
+                [element(0, 0), element(0, 1), element(0, 2), element(0, 3)],
+                [element(1, 0), element(1, 1), element(1, 2), element(1, 3)],
+                [element(2, 0), element(2, 1), element(2, 2), element(2, 3)],
+                [0, 0, 0, 1],
+            ])
+        }
+        return poses
+    }
+
+    /// Every vertex of a build item's mesh, in the coordinates the file stores them in.
+    func vertices(forObject id: Int) throws -> [Vector3D] {
+        for item in try text(at: "3D/3dmodel.model").fragments(forTag: "item") {
+            guard item.attributeValue("objectid").flatMap(Int.init) == id else { continue }
+            let path = item.attributeValue("p:path").map { String($0.dropFirst()) } ?? "3D/3dmodel.model"
+            return try text(at: path).fragments(forTag: "vertex").compactMap { vertex in
+                guard let x = vertex.attributeValue("x").flatMap(Double.init),
+                      let y = vertex.attributeValue("y").flatMap(Double.init),
+                      let z = vertex.attributeValue("z").flatMap(Double.init)
+                else { return nil }
+                return Vector3D(x: x, y: y, z: z)
+            }
+        }
+        return []
+    }
+
+    /// Whether any build item carries a transform matrix of its own.
+    func hasItemTransforms() throws -> Bool {
+        try text(at: "3D/3dmodel.model").fragments(forTag: "item")
+            .contains { $0.attributeValue("transform") != nil }
     }
 
     /// Each object id in PrusaSlicer's sidecar, paired with the `firstid`/`lastid` of its volume.

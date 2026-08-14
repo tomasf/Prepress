@@ -139,6 +139,10 @@ private struct ComponentEntry {
     let component: Component
     let packingBody: any Geometry3D
     let placedBody: (Transform2D) -> any Geometry3D
+    /// The transform taking this piece from where it sat in the assembly to where it lands on the
+    /// plate, for the layout it's finally given. Inverted, it's what tells a slicer where the piece
+    /// belongs in the assembled model.
+    let platterTransform: (Transform2D) -> Transform3D
 }
 
 public extension Geometry3D {
@@ -258,14 +262,21 @@ public extension Geometry3D {
     func onPlatter(removingMaterials: Bool = false) -> any Geometry3D {
         evaluating { base, evaluator in
             @Environment(\.footprintMargin) var margin
+            // The frame the layout is read in. Resolving it here, once, is what lets each piece's pose
+            // be computed as a single transform below rather than emerging from a chain of modifiers.
+            @Environment(\.transform) var readingTransform
             let placed = await packComponents(
                 of: base,
                 using: evaluator,
                 margin: margin,
+                readingTransform: readingTransform,
                 removingMaterials: removingMaterials
             )
             for component in placed { component }
         }
+        // Registered here rather than only where settings are declared: a platter always has an
+        // assembled arrangement to record, even when no component configured anything.
+        .withArchiveFinalizer { try await SlicerSettingsEntries.writeConfigsIfNeeded(to: $0) }
     }
 }
 
@@ -276,6 +287,7 @@ private func packComponents(
     of base: any Geometry3D,
     using evaluator: GeometryEvaluator,
     margin: Double,
+    readingTransform: Transform3D,
     removingMaterials: Bool
 ) async -> [any Geometry3D] {
     let partGeometries = await evaluator.parts(of: base, ofType: .solid)
@@ -298,23 +310,21 @@ private func packComponents(
 
     var entries: [ComponentEntry] = []
     for (geometry, data) in declarations {
-        // Orients one disconnected solid (or the whole body), drops it to z = 0, and applies the 2D layout
-        // transform. Both the packing footprint and the final placed body come from this single function,
-        // so they can never diverge — resolving the orientation in two places once let the footprint and
-        // the placed body disagree, and parts overlapped.
-        func orientedBody(componentIndex: Int?, placement: Transform2D) -> any Geometry3D {
-            readEnvironment(\.transform) { transform in
-                let oriented = geometry.rotated(from: data.resolvedUpDirection(in: transform), to: .up)
-                let solid: any Geometry3D
-                if let componentIndex {
-                    solid = oriented.separated { components in components[componentIndex] }
-                } else {
-                    solid = oriented
-                }
-                solid
-                    .aligned(at: .minZ)
-                    .transformed(placement.transform3D)
-            }
+        // The pose of each piece is one transform, computed here and used for everything: the packing
+        // footprint, the placed body, and the assembled pose recorded for the slicer. Deriving it in
+        // more than one place is what once let the footprint and the placed body disagree, so that
+        // parts overlapped.
+        let rotation = Transform3D.rotation(from: data.resolvedUpDirection(in: readingTransform), to: .up)
+
+        // One disconnected solid of the component, already stood up but not yet dropped or placed.
+        func uprightSolid(_ solidIndex: Int?) -> any Geometry3D {
+            let upright = geometry.transformed(rotation)
+            guard let solidIndex else { return upright }
+            return upright.separated { solids in solids[solidIndex] }
+        }
+
+        func orientedBody(solidIndex: Int?, drop: Double, placement: Transform2D) -> any Geometry3D {
+            uprightSolid(solidIndex).transformed(Transform3D.translation(z: -drop).concatenated(with: placement.transform3D))
         }
 
         // The solid count is orientation-independent, so read it from the plain geometry.
@@ -322,21 +332,31 @@ private func packComponents(
         let solidCount = separateSolids ? await evaluator.components(of: geometry).count : 1
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // lay out and would otherwise produce an empty part).
-        var solidIndices: [Int?] = []
+        // How far each upright solid has to fall to rest on z = 0. Measured rather than applied with
+        // `aligned(at: .minZ)` so the drop is part of the transform we can hand back later. Solids that
+        // are empty (an empty component has no footprint to lay out) are skipped here.
+        var drops: [(solidIndex: Int?, drop: Double)] = []
         for solidIndex in 0 ..< Swift.max(solidCount, 1) {
-            let componentIndex: Int? = separateSolids ? solidIndex : nil
-            if await evaluator.isEmpty(orientedBody(componentIndex: componentIndex, placement: .identity)) { continue }
-            solidIndices.append(componentIndex)
+            let index: Int? = separateSolids ? solidIndex : nil
+            guard let bounds = await evaluator.bounds(of: uprightSolid(index)) else { continue }
+            drops.append((index, bounds.minimum.z))
         }
 
         for _ in 0 ..< data.component.platter.quantity {
-            for componentIndex in solidIndices {
+            for (solidIndex, drop) in drops {
+                // The full journey from assembled pose to plate: stand up, drop, place.
+                func platterTransform(_ placement: Transform2D) -> Transform3D {
+                    rotation
+                        .concatenated(with: .translation(z: -drop))
+                        .concatenated(with: placement.transform3D)
+                }
                 entries.append(ComponentEntry(
                     component: data.component,
-                    packingBody: orientedBody(componentIndex: componentIndex, placement: .identity),
-                    placedBody: { transform in
-                        orientedBody(componentIndex: componentIndex, placement: transform)
-                    }
+                    packingBody: orientedBody(solidIndex: solidIndex, drop: drop, placement: .identity),
+                    placedBody: { placement in
+                        orientedBody(solidIndex: solidIndex, drop: drop, placement: placement)
+                    },
+                    platterTransform: platterTransform
                 ))
             }
         }
@@ -374,9 +394,15 @@ private func packComponents(
             semantic: .solid,
             material: removingMaterials ? nil : entry.component.material
         )
-        let result = removingMaterials
+        var result: any Geometry3D = removingMaterials
             ? placed.withoutMaterials().inPart(outputPart)
             : placed.inPart(outputPart)
+
+        // Inverted, the platter transform says where this piece belongs in the assembly it came from.
+        let assembledPose = entry.platterTransform(transforms[index]).inverse
+        result = result.modifyingResult(AssemblyPlacements.self) {
+            $0.posesByPart[outputPart] = assembledPose
+        }
 
         let settings = entry.component.slicerSettings
         guard !settings.isEmpty else { return result }

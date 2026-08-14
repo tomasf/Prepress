@@ -106,6 +106,10 @@ Components are laid out with a no-fit-polygon nester over each one's footprint. 
 
 `onPlatter(removingMaterials:)` takes one further option: `removingMaterials` strips all colors so the platter prints as one uniform material.
 
+### Assembly view
+
+Flattening a model onto the bed normally throws away the arrangement it started from, leaving a plate of loose parts with nothing recording how they fit together. Sprue writes that arrangement into the 3MF, so Bambu Studio's assembly view can show the model as designed while the plate stays laid out flat.
+
 ## License
 
 This project is licensed under the MIT license. See the LICENSE file for details.

@@ -51,9 +51,14 @@ extension SlicerSettingsEntries {
 
         if !archive.fileExists(at: bambuConfigPath) {
             let names = archive.objectNames
+            let assembly = archive.resultElement(AssemblyPlacements.self).posesByPart
+                .reduce(into: [Int: Transform3D]()) { result, entry in
+                    if let id = archive.objectID(for: entry.key) { result[id] = entry.value }
+                }
             if let data = try accumulated.bambuConfigData(
                 objectID: archive.objectID(for:),
-                objectName: { names[$0] }
+                objectName: { names[$0] },
+                assembledPoses: assembly
             ) {
                 try archive.addFile(at: bambuConfigPath, data: data)
             }
@@ -111,18 +116,28 @@ extension SlicerSettingsEntries {
     /// it. Parts whose id can't be resolved (shouldn't happen for parts that were actually packed)
     /// are skipped rather than guessed at.
     ///
+    /// The file also carries the assembled arrangement, when there is one: an `<assemble>` section
+    /// giving each object the transform that puts it back where it belonged in the model. Bambu
+    /// Studio's assembly view reads it, so the plate can stay laid out flat while the model can still
+    /// be seen as designed. That section alone is reason enough to write the file, so a platter with
+    /// no slicer settings at all still produces one.
+    ///
     /// Each object also carries a `name`, which is not a print setting but is load-bearing anyway:
     /// Bambu Studio's reader takes an object's displayed name from this key alone once the object has
     /// a config block, ignoring the `name` attribute on the 3MF `<object>` element it would otherwise
     /// use. Without it, configuring a component would blank its name in the object list. An explicit
     /// ``BambuSettingKey/name`` in the settings wins over the part's own name.
-    func bambuConfigData(objectID: (Part) -> Int?, objectName: (Int) -> String?) throws -> Data? {
+    func bambuConfigData(
+        objectID: (Part) -> Int?,
+        objectName: (Int) -> String?,
+        assembledPoses: [Int: Transform3D] = [:]
+    ) throws -> Data? {
         var settingsByID: [Int: [BambuSettingKey: String]] = [:]
         for (part, settings) in settingsByPart {
             guard !settings.bambu.isEmpty, let id = objectID(part) else { continue }
             settingsByID[id, default: [:]].merge(settings.bambu) { _, new in new }
         }
-        guard !settingsByID.isEmpty else { return nil }
+        guard !settingsByID.isEmpty || !assembledPoses.isEmpty else { return nil }
 
         let document = Document()
         let config = document.makeDocumentElement(name: "config")
@@ -135,6 +150,19 @@ extension SlicerSettingsEntries {
             let object = config.addElement("object")
             object[attribute: "id"] = String(id)
             object.addMetadata(settings, type: nil)
+        }
+
+        // Last child of <config>, mirroring where Bambu Studio writes it itself. Objects without a
+        // settings block still appear here — the two are independent.
+        if !assembledPoses.isEmpty {
+            let assemble = config.addElement("assemble")
+            for id in assembledPoses.keys.sorted() {
+                let item = assemble.addElement("assemble_item")
+                item[attribute: "object_id"] = String(id)
+                item[attribute: "instance_id"] = "0"
+                item[attribute: "transform"] = assembledPoses[id]!.assembleAttributeValue
+                item[attribute: "offset"] = "0 0 0"
+            }
         }
         return try document.xmlData()
     }
