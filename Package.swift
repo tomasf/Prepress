@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "generator", targets: ["generator"]),
     ],
     dependencies: [
-        .package(path: "../Cadova"),
+        .package(url: "https://github.com/tomasf/Cadova.git", from: "0.10.1"),
         .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.1"),
         // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
         .package(url: "https://github.com/tomasf/Zip.git", from: "2.1.2"),
