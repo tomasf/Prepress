@@ -11,13 +11,18 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/tomasf/Cadova.git", from: "0.10.1"),
         .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.1"),
+        .package(url: "https://github.com/tomasf/ThreeMF.git", from: "0.3.2"),
         // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
         .package(url: "https://github.com/tomasf/Zip.git", from: "2.1.2"),
     ],
     targets: [
         .target(
             name: "Sprue",
-            dependencies: ["Cadova", .product(name: "Nodal", package: "Nodal")],
+            dependencies: [
+                "Cadova",
+                .product(name: "Nodal", package: "Nodal"),
+                .product(name: "ThreeMF", package: "ThreeMF"),
+            ],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .executableTarget(

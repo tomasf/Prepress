@@ -29,6 +29,32 @@ struct SlicerSettingsEntries: ResultElement {
     }
 }
 
+extension SlicerSettingsEntries {
+    /// One volume of an object made of several, described in the object's own config block.
+    struct Volume {
+        /// The sub-object's own resource id, which is what the importer matches a volume against.
+        var subObjectID: Int
+        var name: String
+        var settings: [BambuSettingKey: String]
+    }
+
+    /// The volumes of each grouped object, host first so the order matches how the pieces were declared.
+    func volumes(for groups: [Part: PartGroupWriter.Group]) -> [Int: [Volume]] {
+        groups.reduce(into: [:]) { result, entry in
+            let (host, group) = entry
+            var volumes = [Volume(subObjectID: group.hostSubObjectID, name: host.name, settings: [:])]
+            for (passenger, subObjectID) in group.passengerSubObjectIDs.sorted(by: { $0.value < $1.value }) {
+                volumes.append(Volume(
+                    subObjectID: subObjectID,
+                    name: passenger.name,
+                    settings: settingsByPart[passenger]?.bambu ?? [:]
+                ))
+            }
+            result[group.parentObjectID] = volumes
+        }
+    }
+}
+
 // MARK: - Archive integration
 
 extension SlicerSettingsEntries {
@@ -47,18 +73,47 @@ extension SlicerSettingsEntries {
     /// Each is guarded by a `fileExists` check because finalizers are registered per component, so
     /// several of them run for a model with several configured components.
     static func writeConfigsIfNeeded(to archive: ModelArchive) async throws {
+        // Both files are guarded below by their own `fileExists` check, but the regrouping just below
+        // is not idempotent to call twice, and finalizers are registered per declaration — so several
+        // of them run for a model that configures more than one part. Skip the whole thing once both
+        // sidecars already exist.
+        guard !archive.fileExists(at: bambuConfigPath) || !archive.fileExists(at: prusaConfigPath) else {
+            return
+        }
         let accumulated = archive.resultElement(Self.self)
 
+        // Components that carry parts of their own become one object made of several volumes, which
+        // changes the object a host is known by and turns its passengers into volumes rather than
+        // objects. Done here rather than in a finalizer of its own so the ids below are the regrouped
+        // ones — finalizers run in no particular order, so nothing may depend on another having run.
+        let groups = try PartGroupWriter.regroup(in: archive)
+        let passengers = archive.resultElement(PartGrouping.self).passengers
+
+        /// The object a part is written against: a host's parent, or its own if it wasn't grouped.
+        /// A passenger has no object of its own any more — it's a volume, written as a `<part>`.
+        func objectID(for part: Part) -> Int? {
+            if let group = groups[part] { return group.parentObjectID }
+            if passengers.contains(part) { return nil }
+            return archive.objectID(for: part)
+        }
+
         if !archive.fileExists(at: bambuConfigPath) {
-            let names = archive.objectNames
+            // The grouped objects are new, so they aren't in the map built from the parts Cadova wrote.
+            // Their names matter as much as any: Bambu takes an object's displayed name from this key
+            // alone once the object has a config block, so leaving it out blanks the name in its list.
+            var names = archive.objectNames
+            for (host, group) in groups {
+                names[group.parentObjectID] = host.name
+            }
             let assembly = archive.resultElement(AssemblyPlacements.self).posesByPart
                 .reduce(into: [Int: Transform3D]()) { result, entry in
-                    if let id = archive.objectID(for: entry.key) { result[id] = entry.value }
+                    if let id = objectID(for: entry.key) { result[id] = entry.value }
                 }
             if let data = try accumulated.bambuConfigData(
-                objectID: archive.objectID(for:),
+                objectID: objectID(for:),
                 objectName: { names[$0] },
-                assembledPoses: assembly
+                assembledPoses: assembly,
+                volumes: accumulated.volumes(for: groups)
             ) {
                 try archive.addFile(at: bambuConfigPath, data: data)
             }
@@ -67,7 +122,10 @@ extension SlicerSettingsEntries {
         guard !archive.fileExists(at: prusaConfigPath) else { return }
         let triangleCounts = await accumulated.triangleCounts(in: archive)
         if let data = try accumulated.prusaConfigData(
-            objectID: archive.objectID(for:),
+            // A grouped object's mesh is several meshes, and PrusaSlicer's format describes an object's
+            // volumes by triangle range within one. Rather than write a range that doesn't match — which
+            // it rejects outright — a grouped component is left out of this sidecar entirely.
+            objectID: { part in groups[part] == nil && !passengers.contains(part) ? archive.objectID(for: part) : nil },
             triangleCount: { triangleCounts[$0] }
         ) {
             try archive.addFile(at: prusaConfigPath, data: data)
@@ -130,14 +188,20 @@ extension SlicerSettingsEntries {
     func bambuConfigData(
         objectID: (Part) -> Int?,
         objectName: (Int) -> String?,
-        assembledPoses: [Int: Transform3D] = [:]
+        assembledPoses: [Int: Transform3D] = [:],
+        volumes: [Int: [Volume]] = [:]
     ) throws -> Data? {
         var settingsByID: [Int: [BambuSettingKey: String]] = [:]
         for (part, settings) in settingsByPart {
             guard !settings.bambu.isEmpty, let id = objectID(part) else { continue }
             settingsByID[id, default: [:]].merge(settings.bambu) { _, new in new }
         }
-        guard !settingsByID.isEmpty || !assembledPoses.isEmpty else { return nil }
+        guard !settingsByID.isEmpty || !assembledPoses.isEmpty || !volumes.isEmpty else { return nil }
+        // An object made of volumes needs its block written even with nothing to say about the object
+        // itself, since that block is where the volumes are described.
+        for id in volumes.keys where settingsByID[id] == nil {
+            settingsByID[id] = [:]
+        }
 
         let document = Document()
         let config = document.makeDocumentElement(name: "config")
@@ -150,6 +214,17 @@ extension SlicerSettingsEntries {
             let object = config.addElement("object")
             object[attribute: "id"] = String(id)
             object.addMetadata(settings, type: nil)
+
+            // Each volume of a grouped object, named and configured in its own right. `id` is the
+            // sub-object's own resource id, which is what the importer matches a volume against.
+            for volume in volumes[id] ?? [] {
+                let part = object.addElement("part")
+                part[attribute: "id"] = String(volume.subObjectID)
+                part[attribute: "subtype"] = "normal_part"
+                var volumeSettings = volume.settings
+                volumeSettings[.name] = volumeSettings[.name] ?? volume.name
+                part.addMetadata(volumeSettings, type: nil)
+            }
         }
 
         // Last child of <config>, mirroring where Bambu Studio writes it itself. Objects without a

@@ -35,3 +35,32 @@ internal extension Transform3D {
             .joined(separator: " ")
     }
 }
+
+/// Which parts a component's pieces were grouped into, per emitted host.
+///
+/// A part declared inside a component travels with it, and the two have to reach the slicer as one
+/// object made of several volumes. Anything else falls apart on import: a slicer drops each object it
+/// loads onto the bed, so a passenger emitted as an object of its own lands at z = 0 instead of inside
+/// its host (`Model.cpp`, `ModelObject::ensure_on_bed` — an object with one volume and nothing below
+/// the bed is pushed down onto it, while one with several volumes is left alone).
+///
+/// The grouping is recorded here and applied when the archive is finalized, by rewriting the model
+/// file: each host becomes an object whose content is components referencing its own mesh and its
+/// passengers'.
+struct PartGrouping: ResultElement {
+    /// Per host part, the passengers riding with it, in the order they should appear.
+    var passengersByHost: [Part: [Part]]
+
+    init() { passengersByHost = [:] }
+    init(passengersByHost: [Part: [Part]]) { self.passengersByHost = passengersByHost }
+    init(combining elements: [PartGrouping]) {
+        passengersByHost = elements.reduce(into: [:]) { result, element in
+            result.merge(element.passengersByHost) { current, _ in current }
+        }
+    }
+
+    /// Every part that rides inside another, so it isn't also treated as an object in its own right.
+    var passengers: Set<Part> {
+        Set(passengersByHost.values.flatMap { $0 })
+    }
+}

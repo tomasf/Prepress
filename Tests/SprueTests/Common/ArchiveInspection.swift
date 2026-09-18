@@ -125,3 +125,48 @@ extension ZipArchive<Data> {
         return ranges
     }
 }
+
+extension ZipArchive<Data> {
+    /// Every mesh in the package, with the name of the object carrying it.
+    ///
+    /// Scans all model files rather than following build items, so it finds a mesh whether it's an
+    /// object in its own right or a volume of a grouped one — the two forms a component's pieces take
+    /// depending on whether anything rides inside it. Names repeat when a component was copied.
+    func meshes() throws -> [(name: String, vertices: [Vector3D])] {
+        var found: [(name: String, vertices: [Vector3D])] = []
+        // A mesh lives either in the file a build item points at, or — once a component's pieces are
+        // grouped — in one a component references. Follow both.
+        let root = try text(at: "3D/3dmodel.model")
+        let referenced = (root.fragments(forTag: "item") + root.fragments(forTag: "component"))
+            .compactMap { $0.attributeValue("p:path").map { String($0.dropFirst()) } }
+        let paths = ["3D/3dmodel.model"] + referenced
+
+        for path in Set(paths) {
+            for object in try text(at: path).fragments(forTag: "object") {
+                let mesh = object.components(separatedBy: "</object>").first ?? object
+                let vertices = mesh.fragments(forTag: "vertex").compactMap { vertex -> Vector3D? in
+                    guard let x = vertex.attributeValue("x").flatMap(Double.init),
+                          let y = vertex.attributeValue("y").flatMap(Double.init),
+                          let z = vertex.attributeValue("z").flatMap(Double.init)
+                    else { return nil }
+                    return Vector3D(x: x, y: y, z: z)
+                }
+                guard !vertices.isEmpty, let name = object.attributeValue("name") else { continue }
+                found.append((name, vertices))
+            }
+        }
+        return found
+    }
+
+    /// The axis-aligned bounds of every mesh, by object name.
+    func meshBounds() throws -> [(name: String, low: Vector3D, high: Vector3D)] {
+        try meshes().map { mesh in
+            var low = mesh.vertices[0], high = mesh.vertices[0]
+            for point in mesh.vertices.dropFirst() {
+                low = Vector3D.min(low, point)
+                high = Vector3D.max(high, point)
+            }
+            return (mesh.name, low, high)
+        }
+    }
+}

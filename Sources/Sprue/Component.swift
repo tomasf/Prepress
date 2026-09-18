@@ -103,8 +103,10 @@ public struct Component: Sendable {
 ///
 /// Only geometry explicitly declared with ``Cadova/Geometry3D/inComponent(_:upDirection:)`` (or its `name:` variant)
 /// carries this; the platter ignores everything else, including plain Cadova
-/// ``Cadova/Geometry3D/inPart(_:)`` parts. A part with no declared print orientation can't be oriented
-/// meaningfully, so it's left out rather than dropped onto the bed in an arbitrary rotation.
+/// ``Cadova/Geometry3D/inPart(_:)`` parts declared outside a component. A part with no declared print
+/// orientation can't be oriented meaningfully, so it's left out rather than dropped onto the bed in an
+/// arbitrary rotation — except a part declared *inside* a component, which has no orientation of its
+/// own to lose: it travels with its host instead. See ``onPlatter(removingMaterials:)``.
 ///
 /// The up direction is stored together with the environment transform in effect where it was declared,
 /// so the packer can re-express it in whatever frame it reads — keeping orientation correct even when
@@ -135,8 +137,24 @@ struct ComponentData: ResultElement {
     init(combining elements: [ComponentData]) { value = elements.compactMap(\.value).last }
 }
 
+/// A part declared inside a component, which moves with it rather than being laid out separately.
+private struct Passenger {
+    let part: Part
+    let geometry: any Geometry3D
+}
+
+/// One `inComponent` declaration, with the pieces nested inside it that travel with it.
+private struct Declaration {
+    let geometry: any Geometry3D
+    let data: ComponentData.Value
+    let passengers: [Passenger]
+}
+
 private struct ComponentEntry {
     let component: Component
+    /// Parts declared inside the component, in the frame the component was read in. They take the same
+    /// journey to the plate as their host, but are emitted as objects of their own.
+    let passengers: [Passenger]
     let packingBody: any Geometry3D
     let placedBody: (Transform2D) -> any Geometry3D
     /// The transform taking this piece from where it sat in the assembly to where it lands on the
@@ -242,7 +260,13 @@ public extension Geometry3D {
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
     /// own part. Every component is re-emitted as its own named part, so they remain individually
     /// selectable and movable in a slicer. Geometry that isn't a component — including plain Cadova
-    /// ``Cadova/Geometry3D/inPart(_:)`` parts — is discarded.
+    /// ``Cadova/Geometry3D/inPart(_:)`` parts declared outside one — is discarded.
+    ///
+    /// A plain part declared *inside* a component travels with it instead: it takes the same journey to
+    /// the plate as its host and is emitted as a part of its own, grouped with the host into one object
+    /// made of several volumes so a slicer keeps it in place rather than dropping it beside its host on
+    /// import. That's how, say, a die can carry its pips as a separately colorable piece without them
+    /// scattering across the plate.
     ///
     /// If any component declared `slicerSettings`, this also embeds two sidecar files into the
     /// exported 3MF — `Metadata/model_settings.config` and `Metadata/Slic3r_PE_model.config` —
@@ -292,16 +316,46 @@ private func packComponents(
 ) async -> [any Geometry3D] {
     let partGeometries = await evaluator.parts(of: base, ofType: .solid)
 
+    /// Everything nested inside a part, dropped so it can be re-attached deliberately rather than
+    /// riding along in the catalog — where it would be duplicated per separated solid, merged across
+    /// copies, and left at a stale position.
+    func stripped(_ geometry: any Geometry3D) -> any Geometry3D {
+        PartSemantic.allCases.reduce(geometry) { $0.removingParts(ofType: $1) }
+    }
+
     // Only declared components participate. Parts with no component data (plain Cadova parts) are
     // skipped rather than guessed at. Reading the data first also gives a stable layout order: several
     // declarations of one component share a name, so position in the assembly breaks the tie.
-    var declarations: [(geometry: any Geometry3D, data: ComponentData.Value)] = []
+    var declarations: [Declaration] = []
     for (_, partGeometry) in partGeometries {
         guard let data = await evaluator.result(ComponentData.self, of: partGeometry).value else { continue }
-        // The catalog exposes nested parts flattened at the top level, so each is laid out on its own.
-        // Strip any nested parts (of every semantic) so they don't ride along.
-        let geometry = PartSemantic.allCases.reduce(partGeometry) { $0.removingParts(ofType: $1) }
-        declarations.append((geometry, data))
+
+        // Parts declared inside this one travel with it as passengers rather than being dropped: found
+        // by rescanning at the top level, since membership comes from the component's own catalog but
+        // its stored geometry isn't transformed when the part is — reading a passenger from its host
+        // would leave it at the position it was declared at, missing every transform applied since.
+        var found: [(passenger: Passenger, corner: Vector3D)] = []
+        for (member, _) in await evaluator.parts(of: partGeometry, ofType: .solid) {
+            guard let placed = partGeometries[member] else { continue }
+            // A nested component is already laid out as its own piece, so it must not also ride along.
+            guard await evaluator.result(ComponentData.self, of: placed).value == nil else { continue }
+            let body = stripped(placed)
+            let corner = await evaluator.bounds(of: body, scope: .mainPart)?.minimum ?? .zero
+            found.append((Passenger(part: member, geometry: body), corner))
+        }
+        // The catalog is a dictionary, so fix an order before anything downstream depends on one.
+        // Position breaks ties, since a part's identity is a randomly seeded value.
+        found.sort {
+            ($0.passenger.part.name, $0.corner.x, $0.corner.y, $0.corner.z)
+                < ($1.passenger.part.name, $1.corner.x, $1.corner.y, $1.corner.z)
+        }
+
+        // The catalog exposes nested parts flattened at the top level too, so stripping every semantic
+        // keeps this declaration's own geometry from also carrying its passengers underneath its own
+        // wrapping — they're re-attached deliberately, below.
+        declarations.append(Declaration(
+            geometry: stripped(partGeometry), data: data, passengers: found.map(\.passenger)
+        ))
     }
     declarations.sort {
         ($0.data.component.name, $0.data.transform.offset.x, $0.data.transform.offset.y, $0.data.transform.offset.z)
@@ -309,7 +363,10 @@ private func packComponents(
     }
 
     var entries: [ComponentEntry] = []
-    for (geometry, data) in declarations {
+    for declaration in declarations {
+        let geometry = declaration.geometry
+        let data = declaration.data
+        let passengers = declaration.passengers
         // The pose of each piece is one transform, computed here and used for everything: the packing
         // footprint, the placed body, and the assembled pose recorded for the slicer. Deriving it in
         // more than one place is what once let the footprint and the placed body disagree, so that
@@ -323,12 +380,26 @@ private func packComponents(
             return upright.separated { solids in solids[solidIndex] }
         }
 
+        // The whole piece, passengers included. What rests on the bed and what the packer has to keep
+        // clear is the piece as a whole, not just its host: `uprightSolid` alone would leave a
+        // passenger for the nester to happily pack a neighbour on top of.
+        func uprightWhole(_ solidIndex: Int?) -> any Geometry3D {
+            passengers.reduce(uprightSolid(solidIndex)) { body, passenger in
+                body.adding { passenger.geometry.transformed(rotation) }
+            }
+        }
+
         func orientedBody(solidIndex: Int?, drop: Double, placement: Transform2D) -> any Geometry3D {
             uprightSolid(solidIndex).transformed(Transform3D.translation(z: -drop).concatenated(with: placement.transform3D))
         }
 
-        // The solid count is orientation-independent, so read it from the plain geometry.
-        let separateSolids = data.component.platter.separateSolids
+        func orientedWhole(solidIndex: Int?, drop: Double, placement: Transform2D) -> any Geometry3D {
+            uprightWhole(solidIndex).transformed(Transform3D.translation(z: -drop).concatenated(with: placement.transform3D))
+        }
+
+        // Separating a component into its disconnected solids leaves no principled answer to which
+        // solid a passenger belongs to, so a component that has any is laid out as one piece.
+        let separateSolids = data.component.platter.separateSolids && passengers.isEmpty
         let solidCount = separateSolids ? await evaluator.components(of: geometry).count : 1
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // lay out and would otherwise produce an empty part).
@@ -337,7 +408,7 @@ private func packComponents(
         var drops: [(solidIndex: Int?, drop: Double)] = []
         for solidIndex in 0 ..< Swift.max(solidCount, 1) {
             let index: Int? = separateSolids ? solidIndex : nil
-            let solid = uprightSolid(index)
+            let solid = uprightWhole(index)
             // Skip solids with nothing to lay out. This is not just about genuinely empty components:
             // booleans leave degenerate slivers behind, and separating a body hands each of those out
             // as its own solid. Measuring bounds alone doesn't reject them — a sliver has bounds — so
@@ -357,7 +428,8 @@ private func packComponents(
                 }
                 entries.append(ComponentEntry(
                     component: data.component,
-                    packingBody: orientedBody(solidIndex: solidIndex, drop: drop, placement: .identity),
+                    passengers: passengers,
+                    packingBody: orientedWhole(solidIndex: solidIndex, drop: drop, placement: .identity),
                     placedBody: { placement in
                         orientedBody(solidIndex: solidIndex, drop: drop, placement: placement)
                     },
@@ -392,13 +464,26 @@ private func packComponents(
     // assembled one, so the centring offset disappears and the pose has to put it back — otherwise
     // every piece is displaced by its own plate position and the assembly falls apart.
     var assembledPoses: [Transform3D] = []
+    var passengerCentres: [[Part: Vector3D]] = []
     for index in entries.indices {
         let placed = entries[index].placedBody(transforms[index])
-        let centre = await evaluator.bounds(of: placed).map { ($0.minimum + $0.maximum) / 2 } ?? .zero
+        // Measured on the piece's own mesh: Bambu recentres each object on what that object actually
+        // contains, and a part's mesh is written without the parts nested inside it.
+        let centre = await evaluator.bounds(of: placed, scope: .mainPart)
+            .map { ($0.minimum + $0.maximum) / 2 } ?? .zero
         assembledPoses.append(
             Transform3D.translation(centre)
                 .concatenated(with: entries[index].platterTransform(transforms[index]).inverse)
         )
+
+        // Every passenger is its own object, so the slicer recentres it on its own mesh too.
+        var centres: [Part: Vector3D] = [:]
+        for passenger in entries[index].passengers {
+            let body = passenger.geometry.transformed(entries[index].platterTransform(transforms[index]))
+            centres[passenger.part] = await evaluator.bounds(of: body, scope: .mainPart)
+                .map { ($0.minimum + $0.maximum) / 2 } ?? .zero
+        }
+        passengerCentres.append(centres)
     }
 
     return entries.indices.map { index -> any Geometry3D in
@@ -422,6 +507,36 @@ private func packComponents(
         let assembledPose = assembledPoses[index]
         result = result.modifyingResult(AssemblyPlacements.self) {
             $0.posesByPart[outputPart] = assembledPose
+        }
+
+        // Each passenger takes its host's journey to the plate, emitted as a part of its own — a fresh
+        // one per emitted piece, since copies would otherwise share one identity and merge into a
+        // single object spanning several plate positions. The two are grouped into one multi-volume
+        // object when the archive is finalized (see `PartGroupWriter`): a slicer drops each object it
+        // loads onto the bed, so a passenger emitted as an object of its own would land beside its host
+        // rather than inside it.
+        var grouped: [Part] = []
+        for passenger in entry.passengers {
+            let body = passenger.geometry.transformed(entry.platterTransform(transforms[index]))
+            let part = Part(
+                passenger.part.name,
+                semantic: passenger.part.semantic,
+                material: removingMaterials ? nil : passenger.part.defaultMaterial
+            )
+            let centre = passengerCentres[index][passenger.part] ?? .zero
+            let pose = Transform3D.translation(centre)
+                .concatenated(with: entry.platterTransform(transforms[index]).inverse)
+
+            result = result
+                .adding { removingMaterials ? body.withoutMaterials().inPart(part) : body.inPart(part) }
+                .modifyingResult(AssemblyPlacements.self) { $0.posesByPart[part] = pose }
+            grouped.append(part)
+        }
+        if !grouped.isEmpty {
+            let passengerParts = grouped
+            result = result.modifyingResult(PartGrouping.self) {
+                $0.passengersByHost[outputPart] = passengerParts
+            }
         }
 
         let settings = entry.component.slicerSettings
