@@ -7,6 +7,8 @@ internal import Nodal
 ///
 /// A component declares its settings twice — once where it's created, and again against the part
 /// packing actually emitted it into — so entries for the same part are merged rather than replaced.
+/// Settings declared with ``Cadova/Geometry3D/withSlicerSettings(_:)`` are resolved separately (see
+/// ``PartConfiguration``) and folded in alongside these when the archive is written.
 struct SlicerSettingsEntries: ResultElement {
     typealias Entry = (part: Part, settings: ResolvedSlicerSettings)
 
@@ -80,7 +82,12 @@ extension SlicerSettingsEntries {
         guard !archive.fileExists(at: bambuConfigPath) || !archive.fileExists(at: prusaConfigPath) else {
             return
         }
-        let accumulated = archive.resultElement(Self.self)
+        var accumulated = archive.resultElement(Self.self)
+        // Settings declared with `withSlicerSettings` are read back separately, keyed by whichever
+        // part they resolved to, and folded in alongside a component's own settings — appended last,
+        // so they win per key where the two overlap.
+        let declared = await PartConfiguration.resolvingEveryPart(in: archive)
+        accumulated.entries.append(contentsOf: declared.map { ($0.key, $0.value) })
 
         // Components that carry parts of their own become one object made of several volumes, which
         // changes the object a host is known by and turns its passengers into volumes rather than

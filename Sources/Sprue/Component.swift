@@ -55,7 +55,9 @@ public struct Component: Sendable {
     ///   - slicerSettings: Per-object slicer settings embedded in the exported 3MF (e.g.
     ///     `[.infillDensity(15)]`). Each setting is written in whichever of the two sidecar formats
     ///     support it, so the same file configures Bambu Studio and its forks (OrcaSlicer, Creality
-    ///     Print, …) as well as PrusaSlicer and SuperSlicer.
+    ///     Print, …) as well as PrusaSlicer and SuperSlicer. To configure a part declared inside this
+    ///     component rather than the component as a whole, use
+    ///     ``Cadova/Geometry3D/withSlicerSettings(_:)`` on that part instead.
     public init(
         _ name: String,
         platter: PlatterOptions = .default,
@@ -339,7 +341,10 @@ private func packComponents(
             guard let placed = partGeometries[member] else { continue }
             // A nested component is already laid out as its own piece, so it must not also ride along.
             guard await evaluator.result(ComponentData.self, of: placed).value == nil else { continue }
-            let body = stripped(placed)
+            // Resolved before stripping, while the passenger is still in its own catalog and its own
+            // settings can be told apart from anything nested inside *it* in turn.
+            let settings = await PartConfiguration.resolving(placed, using: evaluator)
+            let body = PartConfiguration.replacing(on: stripped(placed), with: settings)
             let corner = await evaluator.bounds(of: body, scope: .mainPart)?.minimum ?? .zero
             found.append((Passenger(part: member, geometry: body), corner))
         }
@@ -350,12 +355,15 @@ private func packComponents(
                 < ($1.passenger.part.name, $1.corner.x, $1.corner.y, $1.corner.z)
         }
 
+        // Resolved before stripping, while every passenger this declaration has is still nested in its
+        // own catalog and can be subtracted from what this declaration claims for itself — otherwise a
+        // die would inherit the settings of the pips inside it.
+        let ownSettings = await PartConfiguration.resolving(partGeometry, using: evaluator)
         // The catalog exposes nested parts flattened at the top level too, so stripping every semantic
         // keeps this declaration's own geometry from also carrying its passengers underneath its own
         // wrapping — they're re-attached deliberately, below.
-        declarations.append(Declaration(
-            geometry: stripped(partGeometry), data: data, passengers: found.map(\.passenger)
-        ))
+        let geometry = PartConfiguration.replacing(on: stripped(partGeometry), with: ownSettings)
+        declarations.append(Declaration(geometry: geometry, data: data, passengers: found.map(\.passenger)))
     }
     declarations.sort {
         ($0.data.component.name, $0.data.transform.offset.x, $0.data.transform.offset.y, $0.data.transform.offset.z)
