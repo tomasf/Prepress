@@ -207,8 +207,9 @@ public extension Geometry3D {
         // the `ComponentData` result element is what the packer reads. The transform in effect here is
         // captured alongside the up direction so the packer can resolve it in its own frame.
         var geometry = definingNaturalUpDirection(upDirection)
-            .readingEnvironment(\.transform) { geometry, transform in
-                geometry.withResult(ComponentData(.init(
+            .replaced {
+                @Environment(\.transform) var transform
+                $0.withResult(ComponentData(.init(
                     component: component, upDirection: upDirection, transform: transform
                 )))
             }
