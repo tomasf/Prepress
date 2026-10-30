@@ -206,12 +206,17 @@ public extension Geometry3D {
         // `definingNaturalUpDirection` keeps Cadova's overhang compensation working inside the component;
         // the `ComponentData` result element is what the packer reads. The transform in effect here is
         // captured alongside the up direction so the packer can resolve it in its own frame.
+        //
+        // The environment has to be read from a closure that runs during the build, which is what
+        // `modifyingResult` gives us. A builder that's evaluated where it's written — `replaced(with:)`,
+        // say — sees no environment at all and captures the identity transform, which silently leaves
+        // every component declared under a later rotation tilted on the platter.
         var geometry = definingNaturalUpDirection(upDirection)
-            .replaced {
+            .modifyingResult(ComponentData.self) { element in
                 @Environment(\.transform) var transform
-                $0.withResult(ComponentData(.init(
+                element = ComponentData(.init(
                     component: component, upDirection: upDirection, transform: transform
-                )))
+                ))
             }
 
         if !component.slicerSettings.isEmpty {
