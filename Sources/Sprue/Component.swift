@@ -260,6 +260,41 @@ public extension Geometry3D {
         )
     }
 
+    /// Declares this geometry as a printable component, creating the component in place.
+    ///
+    /// ```swift
+    /// Box(x: 30, y: 30, z: 10)
+    ///     .inComponent(name: "Lightweight", settings: .infill(.gyroid, density: 20), .wallCount(4))
+    /// ```
+    ///
+    /// The same as ``inComponent(name:upDirection:platterOptions:color:settings:)`` with an array,
+    /// spelled without the brackets. Pass an array where the settings already are one.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the component, as it appears in the output file.
+    ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up when
+    ///     the component is printed. Defaults to `.up`.
+    ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
+    ///     how many copies to make. See ``PlatterOptions``.
+    ///   - color: An optional default color for geometry that doesn't specify its own material.
+    ///   - settings: Per-object slicer settings, e.g. `.infillDensity(15)`.
+    /// - Returns: The geometry declared as a named printable component.
+    func inComponent(
+        name: String,
+        upDirection: Direction3D = .up,
+        platterOptions: PlatterOptions = .default,
+        color: Color? = nil,
+        settings: SlicerSetting...
+    ) -> any Geometry3D {
+        inComponent(
+            name: name,
+            upDirection: upDirection,
+            platterOptions: platterOptions,
+            color: color,
+            settings: settings
+        )
+    }
+
     /// Lays out every printable component in this geometry on a single platter for 3D printing.
     ///
     /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platterOptions:color:settings:)``

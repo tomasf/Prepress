@@ -129,4 +129,21 @@ public extension Geometry3D {
         return modifyingResult(PartConfiguration.self) { $0.append(id: id, settings.resolved) }
             .withArchiveFinalizer { try await SlicerSettingsEntries.writeConfigsIfNeeded(to: $0) }
     }
+
+    /// Applies per-object slicer settings to the part this geometry ends up in.
+    ///
+    /// ```swift
+    /// Sphere(radius: 1.5)
+    ///     .withSlicerSettings(.infillDensity(15), .wallCount(4))
+    ///     .inPart(pips)
+    /// ```
+    ///
+    /// The same as ``withSlicerSettings(_:)`` with an array, spelled without the brackets. Pass an
+    /// array where the settings already are one.
+    ///
+    /// - Parameter settings: The settings to apply, e.g. `.infillDensity(15)`.
+    /// - Returns: The geometry, with the settings declared for its part.
+    func withSlicerSettings(_ settings: SlicerSetting...) -> any Geometry3D {
+        withSlicerSettings(settings)
+    }
 }

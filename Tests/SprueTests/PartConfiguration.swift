@@ -23,6 +23,24 @@ struct PartConfigurationTests {
             .contains(#"key="fill_density" value="15%""#))
     }
 
+    @Test func `withSlicerSettings takes its settings variadically`() async throws {
+        // The bracket-free spelling. Also a check that the variadic overload forwards to the array
+        // one rather than resolving back to itself, which would recurse forever.
+        let pips = Part("Pips", semantic: .solid)
+        let model = Sphere(radius: 2)
+            .withSlicerSettings(.infillDensity(15), .wallCount(4))
+            .inPart(pips)
+
+        let data = try await ModelFileGenerator.build { model }.data()
+        let archive = try ZipArchive(data: data)
+        let bambu = try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+
+        #expect(bambu.contains(#"key="sparse_infill_density" value="15%""#))
+        #expect(bambu.contains(#"key="wall_loops" value="4""#))
+        #expect(try archive.text(at: SlicerSettingsEntries.prusaConfigPath)
+            .contains(#"key="perimeters" value="4""#))
+    }
+
     @Test func `withSlicerSettings wins over a component's own settings for the same key`() async throws {
         let component = Component("Configured", settings: [.infillDensity(15)])
         let platter = Box(10)

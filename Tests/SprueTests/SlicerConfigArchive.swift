@@ -193,6 +193,21 @@ struct SlicerConfigArchiveTests {
         #expect(archive.hasEntry(at: SlicerSettingsEntries.prusaConfigPath))
     }
 
+    @Test func `inComponent takes its settings variadically`() async throws {
+        // The bracket-free spelling, and a check that the variadic overload forwards to the array one
+        // rather than resolving back to itself. Omitting `settings` entirely still picks the array
+        // overload's default, which is what keeps every existing call site compiling.
+        let model = Box(10)
+            .inComponent(name: "Inline", settings: .infillDensity(15), .wallCount(4))
+
+        let data = try await ModelFileGenerator.build { model }.data()
+        let archive = try ZipArchive(data: data)
+        let bambu = try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+
+        #expect(bambu.contains(#"key="sparse_infill_density" value="15%""#))
+        #expect(bambu.contains(#"key="wall_loops" value="4""#))
+    }
+
     @Test func `multiple components share one config of each kind without crashing`() async throws {
         // Every component with settings registers its own archive finalizer independently. With
         // two components in the same export, both run — this must not throw (a naive "just always
