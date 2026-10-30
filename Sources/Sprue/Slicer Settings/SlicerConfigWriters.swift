@@ -148,7 +148,13 @@ extension SlicerSettingsEntries {
         let configured = settingsByPart.filter { !$0.value.prusa.isEmpty }
         guard !configured.isEmpty else { return [:] }
 
-        let geometries = await archive.evaluator.parts(of: archive.rootGeometry, ofType: .solid)
+        var geometries = await archive.evaluator.parts(of: archive.rootGeometry, ofType: .solid)
+        // The main geometry's part isn't in the catalog (see `PartConfiguration.resolvingEveryPart`),
+        // and its mesh is the root's own — which is what the `.mainPart` scope measures below, so it
+        // needs no special handling beyond being named here.
+        if let main = archive.mainPart {
+            geometries[main] = archive.rootGeometry
+        }
 
         var counts: [Part: Int] = [:]
         for part in configured.keys {

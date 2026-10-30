@@ -24,7 +24,7 @@ import Sprue
 
 ### Slicer settings
 
-Per-object print settings can be declared on the geometry they belong to. They're written into the exported 3MF, so opening the file applies them per object with no manual configuration in the slicer. `withSlicerSettings` works on any Cadova part, and nothing else in Sprue is needed to use it. List the settings inline, or pass an array where you already have one:
+Per-object print settings can be declared on the geometry they belong to. They're written into the exported 3MF, so opening the file applies them per object with no manual configuration in the slicer. `withSlicerSettings` works on any Cadova part, and on the model's own geometry where there's no part at all, so nothing else in Sprue is needed to use it. List the settings inline, or pass an array where you already have one:
 
 ```swift
 Box(x: 30, y: 30, z: 10)
@@ -36,7 +36,7 @@ Box(x: 30, y: 30, z: 10)
     .inPart(name: "Lightweight")
 ```
 
-The modifier has to be applied *within* the part it configures, as above. Written the other way round (`.inPart(…).withSlicerSettings(…)`) it configures whatever part encloses that one, because a part captures its contents where it's declared and anything chained on afterwards lands outside it. Settings declared on a nested part stay with that part and never reach the part around it.
+The modifier has to be applied *within* the part it configures, as above. Written the other way round (`.inPart(…).withSlicerSettings(…)`) it configures whatever encloses that part, the part around it, or the model's main geometry where there is none, because a part captures its contents where it's declared and anything chained on afterwards lands outside it. Settings declared on a nested part stay with that part and never reach the part around it.
 
 Settings are slicer-agnostic. Each one knows how to express itself in both config formats Sprue writes: Bambu Studio's, also read by OrcaSlicer, Creality Print and the other Bambu-derived slicers, and PrusaSlicer's, also read by SuperSlicer. Both sidecars go into the same file, and each slicer reads the one it knows.
 

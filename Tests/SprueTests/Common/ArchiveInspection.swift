@@ -67,6 +67,22 @@ extension ZipArchive<Data> {
         return names
     }
 
+    /// Every setting in Bambu Studio's sidecar, per object id, so one object's settings can be
+    /// checked without matching on another's.
+    func bambuSettings() throws -> [Int: [String: String]] {
+        var settings: [Int: [String: String]] = [:]
+        for object in try text(at: SlicerSettingsEntries.bambuConfigPath).fragments(forTag: "object") {
+            guard let id = object.attributeValue("id").flatMap(Int.init) else { continue }
+            settings[id] = object.fragments(forTag: "metadata").reduce(into: [:]) { result, metadata in
+                guard let key = metadata.attributeValue("key"),
+                      let value = metadata.attributeValue("value")
+                else { return }
+                result[key] = value
+            }
+        }
+        return settings
+    }
+
     /// The assembled pose Bambu Studio's assembly view reads, per object id.
     ///
     /// Parsed back from the 12 column-major values of the `transform` attribute, so a transposed or

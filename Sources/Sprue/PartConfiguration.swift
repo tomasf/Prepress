@@ -3,10 +3,11 @@ import Foundation
 
 /// Per-part slicer settings declared directly on geometry, for whichever part it ends up in.
 ///
-/// Settings declared this way work for any Cadova ``Cadova/Part`` — no ``Component`` and no platter
-/// are needed. This is separate from a component's own `settings`, which stay the way to configure a
-/// whole component; the two are merged when the archive is written, with a declaration made here
-/// winning per key where they overlap, since it's the more specific of the two.
+/// Settings declared this way work for any Cadova ``Cadova/Part``, and for the main geometry where
+/// there's no part at all — no ``Component`` and no platter are needed. This is separate from a
+/// component's own `settings`, which stay the way to configure a whole component; the two are merged
+/// when the archive is written, with a declaration made here winning per key where they overlap,
+/// since it's the more specific of the two.
 ///
 /// Each declaration is stamped with an id, which is what makes them separable again. A result element
 /// attached inside a part propagates *outward* as well — `inPart` blanks the node but keeps the
@@ -53,6 +54,11 @@ extension PartConfiguration {
     /// Reading declarations back per part, rather than off whatever part they were originally declared
     /// against, is what makes this work whether or not packing has renamed or copied that part: it's
     /// the geometry that's queried, and a renamed part's geometry still carries the same declarations.
+    ///
+    /// The main geometry — whatever isn't inside a part of its own — is resolved too, against
+    /// ``Cadova/ModelArchive/mainPart``. Cadova writes that object from a part it makes as the archive
+    /// is written, so the part never reaches the catalog; without resolving it here, settings declared
+    /// on plain top-level geometry would resolve against nothing and be dropped without a word.
     static func resolvingEveryPart(in archive: ModelArchive) async -> [Part: ResolvedSlicerSettings] {
         let evaluator = archive.evaluator
         let geometries = await evaluator.parts(of: archive.rootGeometry, ofType: .solid)
@@ -61,6 +67,13 @@ extension PartConfiguration {
         for (part, geometry) in geometries {
             let own = await resolving(geometry, using: evaluator)
             if !own.isEmpty { resolved[part] = own }
+        }
+
+        if let main = archive.mainPart {
+            // The root's own declarations, with everything its parts claim subtracted — the same
+            // reading every part above gets, applied to what's left over outside them all.
+            let own = await resolving(archive.rootGeometry, using: evaluator)
+            if !own.isEmpty { resolved[main] = own }
         }
         return resolved
     }
@@ -73,9 +86,15 @@ extension PartConfiguration {
         let configuration = await evaluator.result(PartConfiguration.self, of: geometry)
         guard !configuration.declarations.isEmpty else { return ResolvedSlicerSettings() }
 
+        // Every semantic, not only `.solid`: a declaration made inside a nested part of any kind
+        // propagates outward into this configuration, and packing strips nested parts of every
+        // semantic alike — so subtracting the solid ones alone would leave a visual part's settings
+        // attributed to whatever encloses it.
         var nested: Set<UUID> = []
-        for (_, nestedGeometry) in await evaluator.parts(of: geometry, ofType: .solid) {
-            nested.formUnion(await evaluator.result(PartConfiguration.self, of: nestedGeometry).declarationIDs)
+        for semantic in PartSemantic.allCases {
+            for (_, nestedGeometry) in await evaluator.parts(of: geometry, ofType: semantic) {
+                nested.formUnion(await evaluator.result(PartConfiguration.self, of: nestedGeometry).declarationIDs)
+            }
         }
         return configuration.resolved(excluding: nested)
     }
@@ -111,10 +130,23 @@ public extension Geometry3D {
     /// SuperSlicer. This works for any part: a ``Component`` isn't needed, and neither is
     /// ``onPlatter(removingMaterials:)`` — settings on a plain part are a complete use of this.
     ///
+    /// A part isn't needed either. Geometry that's in no part is exported as the model's own object,
+    /// named after the model, and settings declared on it configure that object:
+    ///
+    /// ```swift
+    /// Box(10)
+    ///     .withSlicerSettings([.infillDensity(15)])
+    /// ```
+    ///
+    /// What ``onPlatter(removingMaterials:)`` emits is the components it packed and nothing else, so
+    /// geometry that isn't a component doesn't reach the file and settings declared on it have no
+    /// object to configure.
+    ///
     /// - Important: This has to be applied *within* the part it configures, as shown above. Written the
     ///   other way round — `geometry.inPart(pips).withSlicerSettings(...)` — it configures whatever
-    ///   part encloses `pips`, if any, because a part captures its contents where it's declared and
-    ///   anything chained on afterwards lands outside it.
+    ///   encloses `pips` — the part around it, or the main geometry where there's no part — because a
+    ///   part captures its contents where it's declared and anything chained on afterwards lands
+    ///   outside it.
     ///
     /// Settings declared this way and a component's own `settings` are merged for a
     /// part that has both, with this modifier's settings winning per key where they overlap. Settings

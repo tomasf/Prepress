@@ -232,4 +232,110 @@ struct SlicerConfigArchiveTests {
         #expect(prusa.fragments(forTag: "object").count == 2)
         #expect(prusa.fragments(forTag: "volume").count == 2)
     }
+
+    @Test func `the main geometry is configured without any part at all`() async throws {
+        // Regression: settings used to need a part to land on. Cadova writes whatever isn't in a part
+        // as an object of its own, but it synthesizes that part while writing the archive rather than
+        // while building, so resolving settings over the part catalog alone found nothing to attach
+        // them to and dropped them — leaving a file that opened cleanly with none of its settings.
+        let model = Box(x: 20, y: 20, z: 10)
+            .withSlicerSettings(.infillDensity(15), .wallCount(4))
+
+        let data = try await ModelFileGenerator.build { model }.data()
+        let archive = try ZipArchive(data: data)
+
+        #expect(try archive.text(at: SlicerSettingsEntries.bambuConfigPath)
+            .contains(#"key="sparse_infill_density" value="15%""#))
+        #expect(try archive.text(at: SlicerSettingsEntries.prusaConfigPath)
+            .contains(#"key="fill_density" value="15%""#))
+
+        // The volume range is measured from a different geometry than a part's is, so it gets the
+        // same check: too high and PrusaSlicer refuses the file outright, too low and it drops
+        // triangles silently.
+        let counts = try archive.serializedTriangleCounts()
+        let ranges = try archive.prusaVolumeRanges()
+        #expect(ranges.count == 1)
+        for (id, range) in ranges {
+            let triangleCount = try #require(counts[id], "no serialized mesh for object \(id)")
+            #expect(range.firstID == 0)
+            #expect(range.lastID == triangleCount - 1)
+        }
+    }
+
+    @Test func `the main geometry and a part beside it are configured separately`() async throws {
+        // The two resolve by different routes, and a declaration inside a part propagates outward to
+        // the root as well — so the root's own settings are whatever is left once every part's are
+        // subtracted. Distinct settings here so a leak in either direction fails rather than passing
+        // by coincidence.
+        let model = Box(x: 20, y: 20, z: 10)
+            .withSlicerSettings(.infillDensity(15))
+            .adding {
+                Sphere(radius: 6)
+                    .withSlicerSettings(.wallCount(5))
+                    .translated(x: 40)
+                    .inPart(Part("Ball"))
+            }
+
+        let data = try await ModelFileGenerator.build { model }.data()
+        let archive = try ZipArchive(data: data)
+
+        let names = try archive.bambuObjectNames()
+        let settings = try archive.bambuSettings()
+        let ballID = try #require(names.first { $0.value == "Ball" }?.key)
+        let mainID = try #require(names.first { $0.value != "Ball" }?.key)
+
+        #expect(settings[mainID]?["sparse_infill_density"] == "15%")
+        #expect(settings[mainID]?["wall_loops"] == nil)
+        #expect(settings[ballID]?["wall_loops"] == "5")
+        #expect(settings[ballID]?["sparse_infill_density"] == nil)
+    }
+
+    @Test func `a visual part's settings stay off the geometry around it`() async throws {
+        // A nested part's declarations are subtracted from its host's, and that has to hold for every
+        // part semantic — not just the solid ones. A 3MF carries visual parts too, so a visual part
+        // left out of a catalog read of solid parts would otherwise have its settings resolve as
+        // though they had been declared on whatever encloses it.
+        let model = Box(x: 20, y: 20, z: 10)
+            .withSlicerSettings(.infillDensity(15))
+            .adding {
+                Sphere(radius: 6)
+                    .withSlicerSettings(.wallCount(5))
+                    .translated(x: 40)
+                    .inPart(Part("Reference", semantic: .visual))
+            }
+
+        let data = try await ModelFileGenerator.build { model }.data()
+        let archive = try ZipArchive(data: data)
+
+        let settings = try archive.bambuSettings()
+        #expect(settings.count == 1)
+        let own = try #require(settings.values.first)
+        #expect(own["sparse_infill_density"] == "15%")
+        #expect(own["wall_loops"] == nil)
+    }
+
+    @Test func `a platter leaves no main object for top-level settings`() async throws {
+        // onPlatter() emits the components it packed and nothing else, so geometry that isn't a
+        // component is absent from the file — and settings declared on it have no object to configure.
+        // Nothing is written for them rather than their being attached to some other object.
+        let platter = Box(x: 20, y: 20, z: 10)
+            .withSlicerSettings(.infillDensity(15))
+            .adding {
+                Sphere(radius: 6)
+                    .translated(x: 40)
+                    .inComponent(name: "Ball", settings: .wallCount(5))
+            }
+            .onPlatter()
+
+        let data = try await ModelFileGenerator.build { platter }.data()
+        let archive = try ZipArchive(data: data)
+
+        let names = try archive.bambuObjectNames()
+        let settings = try archive.bambuSettings()
+        let ballID = try #require(names.first { $0.value == "Ball" }?.key)
+
+        #expect(settings.count == 1)
+        #expect(settings[ballID]?["wall_loops"] == "5")
+        #expect(settings[ballID]?["sparse_infill_density"] == nil)
+    }
 }
