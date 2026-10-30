@@ -38,11 +38,11 @@ public struct Component: Sendable {
     /// Already collapsed to one value per key, per slicer flavor, in declaration order.
     internal let slicerSettings: ResolvedSlicerSettings
 
-    private init(name: String, material: Material?, platterOptions: PlatterOptions, slicerSettings: [SlicerSetting]) {
+    private init(name: String, material: Material?, platterOptions: PlatterOptions, settings: [SlicerSetting]) {
         self.name = name
         self.material = material
         self.platterOptions = platterOptions
-        self.slicerSettings = slicerSettings.resolved
+        self.slicerSettings = settings.resolved
     }
 
     /// Creates a component with a plain color as its default material.
@@ -52,7 +52,7 @@ public struct Component: Sendable {
     ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
-    ///   - slicerSettings: Per-object slicer settings embedded in the exported 3MF (e.g.
+    ///   - settings: Per-object slicer settings embedded in the exported 3MF (e.g.
     ///     `[.infillDensity(15)]`). Each setting is written in whichever of the two sidecar formats
     ///     support it, so the same file configures Bambu Studio and its forks (OrcaSlicer, Creality
     ///     Print, …) as well as PrusaSlicer and SuperSlicer. To configure a part declared inside this
@@ -62,13 +62,13 @@ public struct Component: Sendable {
         _ name: String,
         platterOptions: PlatterOptions = .default,
         color: Color? = nil,
-        slicerSettings: [SlicerSetting] = []
+        settings: [SlicerSetting] = []
     ) {
         self.init(
             name: name,
             material: color.map { Material.plain($0) },
             platterOptions: platterOptions,
-            slicerSettings: slicerSettings
+            settings: settings
         )
     }
 
@@ -89,14 +89,14 @@ public struct Component: Sendable {
 
     /// Creates a component with a physically-based default material.
     ///
-    /// See ``init(_:platterOptions:color:slicerSettings:)``.
+    /// See ``init(_:platterOptions:color:settings:)``.
     public init(
         _ name: String,
         platterOptions: PlatterOptions = .default,
         material: Material?,
-        slicerSettings: [SlicerSetting] = []
+        settings: [SlicerSetting] = []
     ) {
-        self.init(name: name, material: material, platterOptions: platterOptions, slicerSettings: slicerSettings)
+        self.init(name: name, material: material, platterOptions: platterOptions, settings: settings)
     }
 }
 
@@ -181,7 +181,7 @@ public extension Geometry3D {
     /// ``Cadova/Geometry3D/definingNaturalUpDirection(_:)``, so features inside are built for the
     /// orientation the piece is printed in.
     ///
-    /// Any ``Component/slicerSettings`` work whether or not the component goes through
+    /// Any component `settings` work whether or not the component goes through
     /// ``onPlatter(removingMaterials:)`` — if it does, the settings follow whatever final
     /// part(s) the layout produces (e.g. numbered copies for a `quantity` above 1).
     ///
@@ -243,7 +243,7 @@ public extension Geometry3D {
     ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
-    ///   - slicerSettings: Per-object slicer settings written into the platter's config sidecars
+    ///   - settings: Per-object slicer settings written into the platter's config sidecars
     ///     (e.g. `[.infillDensity(15)]`), for both Bambu Studio and PrusaSlicer and their forks. See
     ///     ``onPlatter(removingMaterials:)``.
     /// - Returns: The geometry declared as a named printable component.
@@ -252,17 +252,17 @@ public extension Geometry3D {
         upDirection: Direction3D = .up,
         platterOptions: PlatterOptions = .default,
         color: Color? = nil,
-        slicerSettings: [SlicerSetting] = []
+        settings: [SlicerSetting] = []
     ) -> any Geometry3D {
         inComponent(
-            Component(name, platterOptions: platterOptions, color: color, slicerSettings: slicerSettings),
+            Component(name, platterOptions: platterOptions, color: color, settings: settings),
             upDirection: upDirection
         )
     }
 
     /// Lays out every printable component in this geometry on a single platter for 3D printing.
     ///
-    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platterOptions:color:slicerSettings:)``
+    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platterOptions:color:settings:)``
     /// — is rotated so its declared up direction points to +Z, dropped so it rests on
     /// the `z = 0` plane, and then packed together with the others using the no-fit polygon nester.
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
@@ -276,7 +276,7 @@ public extension Geometry3D {
     /// import. That's how, say, a die can carry its pips as a separately colorable piece without them
     /// scattering across the plate.
     ///
-    /// If any component declared `slicerSettings`, this also embeds two sidecar files into the
+    /// If any component declared `settings`, this also embeds two sidecar files into the
     /// exported 3MF — `Metadata/model_settings.config` and `Metadata/Slic3r_PE_model.config` —
     /// referencing each packed part by its assigned object id. Each slicer reads whichever one it
     /// knows and ignores the other, applying the settings without the user having to configure them

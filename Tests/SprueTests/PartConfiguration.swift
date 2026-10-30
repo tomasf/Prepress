@@ -24,7 +24,7 @@ struct PartConfigurationTests {
     }
 
     @Test func `withSlicerSettings wins over a component's own settings for the same key`() async throws {
-        let component = Component("Configured", slicerSettings: [.infillDensity(15)])
+        let component = Component("Configured", settings: [.infillDensity(15)])
         let platter = Box(10)
             .withSlicerSettings([.infillDensity(80)])
             .inComponent(component)

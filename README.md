@@ -75,7 +75,7 @@ Components can carry per-object print settings. These are written into the 3MF, 
 
 ```swift
 Box(x: 30, y: 30, z: 10)
-    .inComponent(name: "Lightweight", slicerSettings: [
+    .inComponent(name: "Lightweight", settings: [
         .infill(.gyroid, density: 20),
         .support(.treeAuto),
         .wallCount(4),
@@ -89,7 +89,7 @@ Not every option exists everywhere. A setting with no equivalent in a slicer is 
 Grouped factories like `infill(_:density:…)`, `support(_:style:…)`, `brim(_:width:…)` and `ironing(_:flow:…)` set several related options at once. Every parameter beyond the first is optional and unspecified ones are *not written*, leaving your own profile's value intact. Single-option factories mix freely with them, refining one value out of a group:
 
 ```swift
-slicerSettings: [
+settings: [
     .infill(.gyroid, density: 20),
     .infillDensity(50),   // wins; the gyroid pattern is kept
 ]

@@ -13,10 +13,10 @@ struct SlicerConfigArchiveTests {
         // drops triangles. Nothing else in the pipeline would catch an off-by-one or a mis-scoped
         // measurement, so this compares against the triangles genuinely present in the archive.
         let platter = Box(x: 20, y: 20, z: 10)
-            .inComponent(name: "Blocky", slicerSettings: [.infillDensity(15)])
+            .inComponent(name: "Blocky", settings: [.infillDensity(15)])
             .adding {
                 Sphere(radius: 8)
-                    .inComponent(name: "Round", slicerSettings: [.wallCount(4)])
+                    .inComponent(name: "Round", settings: [.wallCount(4)])
             }
             .onPlatter()
 
@@ -40,10 +40,10 @@ struct SlicerConfigArchiveTests {
         // and the volume range have to follow the *packed* part rather than the one the component
         // declared. Distinct shapes here so a mix-up between copies couldn't pass by coincidence.
         let platter = Cylinder(diameter: 12, height: 6).withSegmentation(count: 6)
-            .inComponent(name: "Hex", platterOptions: .init(quantity: 3), slicerSettings: [.infillDensity(35)])
+            .inComponent(name: "Hex", platterOptions: .init(quantity: 3), settings: [.infillDensity(35)])
             .adding {
                 Sphere(radius: 7)
-                    .inComponent(name: "Ball", slicerSettings: [.wallCount(2)])
+                    .inComponent(name: "Ball", settings: [.wallCount(2)])
             }
             .onPlatter()
 
@@ -78,7 +78,7 @@ struct SlicerConfigArchiveTests {
                     .translated(x: 40)
                     .inPart(Part("Tagalong"))
             }
-            .inComponent(name: "Host", slicerSettings: [.infillDensity(15)])
+            .inComponent(name: "Host", settings: [.infillDensity(15)])
 
         let data = try await ModelFileGenerator.build { component }.data()
         let archive = try ZipArchive(data: data)
@@ -94,9 +94,9 @@ struct SlicerConfigArchiveTests {
     }
 
     @Test func `onPlatter embeds both config sidecars for components with slicer settings`() async throws {
-        // End-to-end: a component declared with slicerSettings must cause onPlatter() to embed both
+        // End-to-end: a component declared with settings must cause onPlatter() to embed both
         // sidecars, so the one file configures Bambu-lineage slicers and PrusaSlicer alike.
-        let component = Component("Configured", slicerSettings: [.infillDensity(15)])
+        let component = Component("Configured", settings: [.infillDensity(15)])
         let platter = Box(10)
             .inComponent(component)
             .onPlatter()
@@ -120,11 +120,11 @@ struct SlicerConfigArchiveTests {
         // slicer settings loaded with a blank name, while the ones without settings were fine.
         let platter = Stack(.x, spacing: 1) {
             Box(10)
-                .inComponent(name: "Foo", upDirection: .up, slicerSettings: [.infill(.gyroid, density: 20)])
+                .inComponent(name: "Foo", upDirection: .up, settings: [.infill(.gyroid, density: 20)])
             Box(15)
-                .inComponent(name: "Larger", upDirection: .up, slicerSettings: [])
+                .inComponent(name: "Larger", upDirection: .up, settings: [])
             Box(20)
-                .inComponent(name: "Huge", upDirection: .up, slicerSettings: [.support(.treeAuto)])
+                .inComponent(name: "Huge", upDirection: .up, settings: [.support(.treeAuto)])
         }
         .onPlatter()
 
@@ -147,7 +147,7 @@ struct SlicerConfigArchiveTests {
         // A component configured purely with fork-only settings has nothing to say to PrusaSlicer, so
         // that sidecar must be left out rather than written empty (or, worse, written with keys
         // PrusaSlicer would choke on).
-        let component = Component("Orca Only", slicerSettings: [.zContouringEnabled(true)])
+        let component = Component("Orca Only", settings: [.zContouringEnabled(true)])
         let platter = Box(10)
             .inComponent(component)
             .onPlatter()
@@ -160,7 +160,7 @@ struct SlicerConfigArchiveTests {
     }
 
     @Test func `a platter without slicer settings writes only the assembled arrangement`() async throws {
-        // No component declared slicerSettings, so there are no settings to write — but a platter
+        // No component declared settings, so there are no settings to write — but a platter
         // always has an assembled arrangement to record, and that lives in Bambu's file. It must
         // arrive without any <object> blocks: an object block with no name blanks the name Bambu shows.
         let component = Component("Plain")
@@ -181,10 +181,10 @@ struct SlicerConfigArchiveTests {
     }
 
     @Test func `inComponent embeds configs without onPlatter`() async throws {
-        // slicerSettings must not require onPlatter() — a bare inComponent, exported directly, should
+        // Component settings must not require onPlatter() — a bare inComponent, exported directly, should
         // still embed the sidecars (inComponent's own part is never renamed/copied without packing,
         // so it resolves to a real object id on its own).
-        let component = Box(10).inComponent(Component("Standalone", slicerSettings: [.wallCount(3)]))
+        let component = Box(10).inComponent(Component("Standalone", settings: [.wallCount(3)]))
 
         let data = try await ModelFileGenerator.build { component }.data()
         let archive = try ZipArchive(data: data)
@@ -194,11 +194,11 @@ struct SlicerConfigArchiveTests {
     }
 
     @Test func `multiple components share one config of each kind without crashing`() async throws {
-        // Every component with slicerSettings registers its own archive finalizer independently. With
+        // Every component with settings registers its own archive finalizer independently. With
         // two components in the same export, both run — this must not throw (a naive "just always
         // addFile" implementation would throw ZipError.duplicateFileEntry on the second one).
-        let a = Component("A", slicerSettings: [.infillDensity(15)])
-        let b = Component("B", slicerSettings: [.infillDensity(80)])
+        let a = Component("A", settings: [.infillDensity(15)])
+        let b = Component("B", settings: [.infillDensity(80)])
         let assembly = Box(10)
             .inComponent(a)
             .adding {

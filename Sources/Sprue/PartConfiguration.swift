@@ -4,7 +4,7 @@ import Foundation
 /// Per-part slicer settings declared directly on geometry, for whichever part it ends up in.
 ///
 /// Settings declared this way work for any Cadova ``Cadova/Part`` — no ``Component`` and no platter
-/// are needed. This is separate from ``Component/slicerSettings``, which stays the way to configure a
+/// are needed. This is separate from a component's own `settings`, which stay the way to configure a
 /// whole component; the two are merged when the archive is written, with a declaration made here
 /// winning per key where they overlap, since it's the more specific of the two.
 ///
@@ -116,7 +116,7 @@ public extension Geometry3D {
     ///   part encloses `pips`, if any, because a part captures its contents where it's declared.
     ///   Cadova's own ``Cadova/Geometry3D/colored(_:)`` behaves the same way.
     ///
-    /// Settings declared this way and a component's own ``Component/slicerSettings`` are merged for a
+    /// Settings declared this way and a component's own `settings` are merged for a
     /// part that has both, with this modifier's settings winning per key where they overlap. Settings
     /// declared on a nested part apply to that part alone, never to the part enclosing it.
     ///

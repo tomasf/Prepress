@@ -6,7 +6,7 @@ import Cadova
 // `SlicerSetting` carrying several options, so they mix freely with the one-option factories in
 // `SlicerSettings.swift`:
 //
-//     .inComponent(name: "Bracket", slicerSettings: [
+//     .inComponent(name: "Bracket", settings: [
 //         .infill(.gyroid, density: 20),
 //         .support(.treeAuto, style: .treeOrganic),
 //         .wallCount(4),
