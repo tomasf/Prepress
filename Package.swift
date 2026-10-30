@@ -9,10 +9,10 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/tomasf/Cadova.git", from: "1.2.0"),
-        .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.1"),
-        .package(url: "https://github.com/tomasf/ThreeMF.git", from: "0.3.2"),
+        .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.3"),
+        .package(url: "https://github.com/tomasf/ThreeMF.git", from: "0.3.3"),
         // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
-        .package(url: "https://github.com/tomasf/Zip.git", from: "2.1.2"),
+        .package(url: "https://github.com/tomasf/Zip.git", from: "2.1.3"),
     ],
     targets: [
         .target(
