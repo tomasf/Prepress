@@ -6,7 +6,6 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "Sprue", targets: ["Sprue"]),
-        .executable(name: "generator", targets: ["generator"]),
     ],
     dependencies: [
         .package(url: "https://github.com/tomasf/Cadova.git", from: "1.2.0"),
@@ -23,11 +22,6 @@ let package = Package(
                 .product(name: "Nodal", package: "Nodal"),
                 .product(name: "ThreeMF", package: "ThreeMF"),
             ],
-            swiftSettings: [.interoperabilityMode(.Cxx)]
-        ),
-        .executableTarget(
-            name: "generator",
-            dependencies: ["Sprue", "Cadova"],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .testTarget(
