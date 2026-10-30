@@ -113,8 +113,8 @@ public extension Geometry3D {
     ///
     /// - Important: This has to be applied *within* the part it configures, as shown above. Written the
     ///   other way round — `geometry.inPart(pips).withSlicerSettings(...)` — it configures whatever
-    ///   part encloses `pips`, if any, because a part captures its contents where it's declared.
-    ///   Cadova's own ``Cadova/Geometry3D/colored(_:)`` behaves the same way.
+    ///   part encloses `pips`, if any, because a part captures its contents where it's declared and
+    ///   anything chained on afterwards lands outside it.
     ///
     /// Settings declared this way and a component's own `settings` are merged for a
     /// part that has both, with this modifier's settings winning per key where they overlap. Settings

@@ -2,9 +2,9 @@
 
 Sprue is a library for [Cadova](https://github.com/tomasf/Cadova) that smooths out the workflow of developing a model for 3D printing.
 
-Writing a model in code makes the model itself easy to change, but the steps around it stay stubbornly manual. Every regeneration means arranging the parts on the bed again, standing up the ones that print on their side, and re-entering the per-object settings you picked last time. None of that is design work, and none of it survives the next edit.
+Writing a model in code makes the model itself easy to change, but the steps around it stay stubbornly manual. Every regeneration means arranging the parts on the bed again, standing up the ones that print on their side, and re-entering the per-object settings you picked last time.
 
-Sprue's goal is to move those steps into the model, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. What that looks like today is described below: declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and lays out on a platter, and per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
+Sprue's goal is to move those steps into code, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. This is done by per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened, and by declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and lays out on a platter. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
 
 ## Installation
 
@@ -15,11 +15,41 @@ Integrate Sprue into your project with the Swift Package Manager by adding it as
 ```
 
 Then, import Sprue where it's needed:
+
 ```swift
 import Sprue
 ```
 
 ## Usage
+
+### Slicer settings
+
+Per-object print settings can be declared on the geometry they belong to. They're written into the exported 3MF, so opening the file applies them per object with no manual configuration in the slicer. `withSlicerSettings` works on any Cadova part, and nothing else in Sprue is needed to use it. List the settings inline, or pass an array where you already have one:
+
+```swift
+Box(x: 30, y: 30, z: 10)
+    .withSlicerSettings(
+        .infill(.gyroid, density: 20),
+        .support(.treeAuto),
+        .wallCount(4),
+    )
+    .inPart(name: "Lightweight")
+```
+
+The modifier has to be applied *within* the part it configures, as above. Written the other way round (`.inPart(…).withSlicerSettings(…)`) it configures whatever part encloses that one, because a part captures its contents where it's declared and anything chained on afterwards lands outside it. Settings declared on a nested part stay with that part and never reach the part around it.
+
+Settings are slicer-agnostic. Each one knows how to express itself in both config formats Sprue writes: Bambu Studio's, also read by OrcaSlicer, Creality Print and the other Bambu-derived slicers, and PrusaSlicer's, also read by SuperSlicer. Both sidecars go into the same file, and each slicer reads the one it knows.
+
+Not every option exists everywhere. A setting with no equivalent in a slicer is simply left out of that slicer's file, so the object keeps whatever the loaded print profile specifies. Nothing is approximated with a neighboring option that means something subtly different. Anything narrower than universal says so in its documentation, for instance **Bambu Studio and its forks only** or **OrcaSlicer only**.
+
+Grouped factories like `infill(_:density:…)`, `support(_:style:…)`, `brim(_:width:…)` and `ironing(_:flow:…)` set several related options at once. Every parameter beyond the first is optional and unspecified ones are *not written*, leaving your own profile's value intact. Single-option factories mix freely with them, refining one value out of a group:
+
+```swift
+.withSlicerSettings(
+    .infill(.gyroid, density: 20),
+    .infillDensity(50),   // wins; the gyroid pattern is kept
+)
+```
 
 ### Components and the platter
 
@@ -27,18 +57,26 @@ A component is a self-contained printable piece. Declare geometry as one with `i
 
 ```swift
 await Model("Bracket set") {
-    Union {
-        Box(x: 40, y: 28, z: 10)
-            .inComponent(name: "Block")
-
-        Cylinder(bottomDiameter: 30, topDiameter: 10, height: 20)
-            .inComponent(name: "Cone")
-    }
-    .onPlatter()
+    Box(x: 40, y: 28, z: 10)
+        .inComponent(name: "Block")
+        .adding {
+            Cylinder(bottomDiameter: 30, topDiameter: 10, height: 20)
+                .inComponent(name: "Cone")
+        }
+        .onPlatter()
 }
 ```
 
 Each component is emitted as its own named part, so they stay individually selectable and movable in the slicer. Geometry that isn't a component, including plain Cadova `inPart` parts, is left off the platter rather than dropped onto the bed in an arbitrary orientation.
+
+A component can carry slicer settings for the whole piece, rather than declaring them on the geometry inside it:
+
+```swift
+Box(x: 30, y: 30, z: 10)
+    .inComponent(name: "Lightweight", settings: .infill(.gyroid, density: 20))
+```
+
+Where a part has settings from both, the two are merged, and `withSlicerSettings` wins for any option the component sets as well, being the more specific of the two.
 
 ### Orientation
 
@@ -49,7 +87,7 @@ Box(x: 12, y: 12, z: 70)
     .inComponent(name: "Pillar", upDirection: .right)
 ```
 
-Declaring a component also sets Cadova's `naturalUpDirection` environment value for its geometry. Anything inside that reads it, such as circular overhang compensation and chamfered holes, is then built for the orientation the part is actually printed in, without having to be told the direction a second time.
+Declaring a component also sets Cadova's `naturalUpDirection` environment value for its geometry. Anything inside that reads it, such as circular overhang compensation, is then built for the orientation the part is actually printed in, without having to be told the direction a second time.
 
 ### Platter options
 
@@ -67,32 +105,6 @@ hinge
 ```swift
 Cylinder(diameter: 26, height: 14).withSegmentation(count: 6)
     .inComponent(name: "Hex", platterOptions: .init(quantity: 4))
-```
-
-### Slicer settings
-
-Components can carry per-object print settings. These are written into the 3MF, so opening the file applies them per object with no manual configuration:
-
-```swift
-Box(x: 30, y: 30, z: 10)
-    .inComponent(name: "Lightweight", settings: [
-        .infill(.gyroid, density: 20),
-        .support(.treeAuto),
-        .wallCount(4),
-    ])
-```
-
-Settings are slicer-agnostic. Each one knows how to express itself in both config formats Sprue writes: Bambu Studio's, also read by OrcaSlicer, Creality Print and the other Bambu-derived slicers, and PrusaSlicer's, also read by SuperSlicer. Both sidecars go into the same file, and each slicer reads the one it knows.
-
-Not every option exists everywhere. A setting with no equivalent in a slicer is simply left out of that slicer's file, so the object keeps whatever the loaded print profile specifies. Nothing is approximated with a neighboring option that means something subtly different. Anything narrower than universal says so in its documentation, for instance **Bambu Studio and its forks only** or **OrcaSlicer only**.
-
-Grouped factories like `infill(_:density:…)`, `support(_:style:…)`, `brim(_:width:…)` and `ironing(_:flow:…)` set several related options at once. Every parameter beyond the first is optional and unspecified ones are *not written*, leaving your own profile's value intact. Single-option factories mix freely with them, refining one value out of a group:
-
-```swift
-settings: [
-    .infill(.gyroid, density: 20),
-    .infillDensity(50),   // wins; the gyroid pattern is kept
-]
 ```
 
 ### Layout
