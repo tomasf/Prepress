@@ -8,7 +8,11 @@ let package = Package(
         .library(name: "Sprue", targets: ["Sprue"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/tomasf/Cadova.git", from: "1.2.0"),
+        // Local while `ModelArchive.mainPart` is only on Cadova's dev branch. Swap back to
+        // `.package(url: "https://github.com/tomasf/Cadova.git", from: "<version>")` once a release
+        // carries it — this path dependency can't be released, and it keeps Cadova out of
+        // Package.resolved in the meantime.
+        .package(path: "../Cadova"),
         .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.3"),
         .package(url: "https://github.com/tomasf/ThreeMF.git", from: "0.3.3"),
         // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
