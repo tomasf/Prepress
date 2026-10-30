@@ -7,7 +7,7 @@ import Foundation
 /// A component is an identity you attach to geometry, the way Cadova's ``Cadova/Part`` works:
 ///
 /// ```swift
-/// let bracket = Component("Bracket", platter: .init(quantity: 4))
+/// let bracket = Component("Bracket", platterOptions: .init(quantity: 4))
 ///
 /// Box(10)
 ///     .inComponent(bracket, upDirection: .right)
@@ -33,15 +33,15 @@ public struct Component: Sendable {
     internal let material: Material?
 
     /// The parts of this component's configuration that only apply once it's laid out on a platter.
-    public let platter: PlatterOptions
+    public let platterOptions: PlatterOptions
 
     /// Already collapsed to one value per key, per slicer flavor, in declaration order.
     internal let slicerSettings: ResolvedSlicerSettings
 
-    private init(name: String, material: Material?, platter: PlatterOptions, slicerSettings: [SlicerSetting]) {
+    private init(name: String, material: Material?, platterOptions: PlatterOptions, slicerSettings: [SlicerSetting]) {
         self.name = name
         self.material = material
-        self.platter = platter
+        self.platterOptions = platterOptions
         self.slicerSettings = slicerSettings.resolved
     }
 
@@ -49,7 +49,7 @@ public struct Component: Sendable {
     ///
     /// - Parameters:
     ///   - name: The name of the component, as it appears in the output file.
-    ///   - platter: Options that only apply once the component is laid out on a platter, such as
+    ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
     ///   - slicerSettings: Per-object slicer settings embedded in the exported 3MF (e.g.
@@ -60,14 +60,14 @@ public struct Component: Sendable {
     ///     ``Cadova/Geometry3D/withSlicerSettings(_:)`` on that part instead.
     public init(
         _ name: String,
-        platter: PlatterOptions = .default,
+        platterOptions: PlatterOptions = .default,
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) {
         self.init(
             name: name,
             material: color.map { Material.plain($0) },
-            platter: platter,
+            platterOptions: platterOptions,
             slicerSettings: slicerSettings
         )
     }
@@ -89,14 +89,14 @@ public struct Component: Sendable {
 
     /// Creates a component with a physically-based default material.
     ///
-    /// See ``init(_:platter:color:slicerSettings:)``.
+    /// See ``init(_:platterOptions:color:slicerSettings:)``.
     public init(
         _ name: String,
-        platter: PlatterOptions = .default,
+        platterOptions: PlatterOptions = .default,
         material: Material?,
         slicerSettings: [SlicerSetting] = []
     ) {
-        self.init(name: name, material: material, platter: platter, slicerSettings: slicerSettings)
+        self.init(name: name, material: material, platterOptions: platterOptions, slicerSettings: slicerSettings)
     }
 }
 
@@ -240,7 +240,7 @@ public extension Geometry3D {
     ///   - name: The name of the component, as it appears in the output file.
     ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up when
     ///     the component is printed. Defaults to `.up`.
-    ///   - platter: Options that only apply once the component is laid out on a platter, such as
+    ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
     ///   - slicerSettings: Per-object slicer settings written into the platter's config sidecars
@@ -250,19 +250,19 @@ public extension Geometry3D {
     func inComponent(
         name: String,
         upDirection: Direction3D = .up,
-        platter: PlatterOptions = .default,
+        platterOptions: PlatterOptions = .default,
         color: Color? = nil,
         slicerSettings: [SlicerSetting] = []
     ) -> any Geometry3D {
         inComponent(
-            Component(name, platter: platter, color: color, slicerSettings: slicerSettings),
+            Component(name, platterOptions: platterOptions, color: color, slicerSettings: slicerSettings),
             upDirection: upDirection
         )
     }
 
     /// Lays out every printable component in this geometry on a single platter for 3D printing.
     ///
-    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platter:color:slicerSettings:)``
+    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platterOptions:color:slicerSettings:)``
     /// — is rotated so its declared up direction points to +Z, dropped so it rests on
     /// the `z = 0` plane, and then packed together with the others using the no-fit polygon nester.
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
@@ -413,7 +413,7 @@ private func packComponents(
 
         // Separating a component into its disconnected solids leaves no principled answer to which
         // solid a passenger belongs to, so a component that has any is laid out as one piece.
-        let separateSolids = data.component.platter.separateSolids && passengers.isEmpty
+        let separateSolids = data.component.platterOptions.separateSolids && passengers.isEmpty
         let solidCount = separateSolids ? await evaluator.components(of: geometry).count : 1
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // lay out and would otherwise produce an empty part).
@@ -432,7 +432,7 @@ private func packComponents(
             drops.append((index, bounds.minimum.z))
         }
 
-        for _ in 0 ..< data.component.platter.quantity {
+        for _ in 0 ..< data.component.platterOptions.quantity {
             for (solidIndex, drop) in drops {
                 // The full journey from assembled pose to plate: stand up, drop, place.
                 func platterTransform(_ placement: Transform2D) -> Transform3D {

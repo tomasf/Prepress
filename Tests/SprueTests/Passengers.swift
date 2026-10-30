@@ -62,7 +62,7 @@ struct PassengerTests {
                     Sphere(radius: 1.5).translated(x: 5, y: 5, z: 8)
                         .inPart(Part("Pips", semantic: .solid))
                 }
-                .inComponent(name: "Die", platter: .init(quantity: 3))
+                .inComponent(name: "Die", platterOptions: .init(quantity: 3))
                 .onPlatter()
         }.data()
         let archive = try ZipArchive(data: data)
@@ -174,7 +174,7 @@ struct PartGroupingTests {
                     Sphere(radius: 1.5).translated(x: 3, y: 3, z: 8)
                         .inPart(Part("Pips", semantic: .solid))
                 }
-                .inComponent(name: "Die", platter: .init(quantity: quantity))
+                .inComponent(name: "Die", platterOptions: .init(quantity: quantity))
                 .onPlatter()
         }.data()
         return try ZipArchive(data: data)

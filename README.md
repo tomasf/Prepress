@@ -59,14 +59,14 @@ The usual way of working is to build the model as it looks assembled, marking ea
 
 ```swift
 hinge
-    .inComponent(name: "Hinge", platter: .init(separateSolids: false))
+    .inComponent(name: "Hinge", platterOptions: .init(separateSolids: false))
 ```
 
 `quantity` covers the other case, where the model contains one of something but the print needs several:
 
 ```swift
 Cylinder(diameter: 26, height: 14).withSegmentation(count: 6)
-    .inComponent(name: "Hex", platter: .init(quantity: 4))
+    .inComponent(name: "Hex", platterOptions: .init(quantity: 4))
 ```
 
 ### Slicer settings

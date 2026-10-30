@@ -97,7 +97,7 @@ struct PartConfigurationTests {
         // packing renaming and copying the part it was declared against.
         let platter = Box(10)
             .withSlicerSettings([.infillDensity(42)])
-            .inComponent(name: "Copies", platter: .init(quantity: 3))
+            .inComponent(name: "Copies", platterOptions: .init(quantity: 3))
             .onPlatter()
 
         let data = try await ModelFileGenerator.build { platter }.data()

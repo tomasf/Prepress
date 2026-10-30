@@ -5,7 +5,7 @@ import Cadova
 
 struct PlatterTests {
     @Test func `platter orients a component that contains a nested part`() async throws {
-        let main = Component("Main", platter: .init(separateSolids: false))
+        let main = Component("Main", platterOptions: .init(separateSolids: false))
         let nestedPart = Part("Nested")
         let capture = BoundsCapture()
 
@@ -58,8 +58,8 @@ struct PlatterTests {
     }
 
     @Test func `nested component is packed with its own up direction`() async throws {
-        let outer = Component("Outer", platter: .init(separateSolids: false))
-        let nested = Component("Nested", platter: .init(separateSolids: false))
+        let outer = Component("Outer", platterOptions: .init(separateSolids: false))
+        let nested = Component("Nested", platterOptions: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         // A component nested inside another component is packed on its own, oriented by its own
@@ -86,7 +86,7 @@ struct PlatterTests {
     }
 
     @Test func `platter does not mirror a part across its declared up direction`() async throws {
-        let component = Component("Asymmetric", platter: .init(separateSolids: false))
+        let component = Component("Asymmetric", platterOptions: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         let platter = Box(x: 10, y: 10, z: 10)
@@ -178,7 +178,7 @@ struct PlatterTests {
         // rigid unit while another in the same platter is split apart. As a single option on
         // onPlatter it was all or nothing.
         let split = Component("Split")
-        let whole = Component("Whole", platter: .init(separateSolids: false))
+        let whole = Component("Whole", platterOptions: .init(separateSolids: false))
         let capture = BoundsCapture()
 
         let platter = Box(10)
