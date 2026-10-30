@@ -3,13 +3,13 @@ import PackageDescription
 
 let package = Package(
     name: "Sprue",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "Sprue", targets: ["Sprue"]),
         .executable(name: "generator", targets: ["generator"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/tomasf/Cadova.git", from: "0.10.1"),
+        .package(url: "https://github.com/tomasf/Cadova.git", from: "1.2.0"),
         .package(url: "https://github.com/tomasf/Nodal.git", from: "1.0.1"),
         .package(url: "https://github.com/tomasf/ThreeMF.git", from: "0.3.2"),
         // Test-only: lets the slicer-config tests read back the 3MF they just wrote.
