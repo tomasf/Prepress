@@ -111,6 +111,30 @@ public extension SlicerSetting {
         ])
     }
 
+    /// Lateral lattice infill: the pattern together with the angles of its two sets of elements.
+    /// **OrcaSlicer and Creality Print.**
+    ///
+    /// The two angles shape this pattern and no other, which is what makes them a group with it
+    /// rather than two more parameters on ``infill(_:density:anchor:anchorMax:direction:wallOverlap:minimumArea:)``.
+    /// Selecting the pattern is what makes them take effect at all.
+    ///
+    /// - Parameters:
+    ///   - angle1: Angle of the first set of lattice elements in the Z direction; zero is vertical.
+    ///   - angle2: Angle of the second set of lattice elements in the Z direction; zero is vertical.
+    ///   - density: Infill density, as a percentage.
+    static func lateralLatticeInfill(
+        angle1: Angle? = nil,
+        angle2: Angle? = nil,
+        density: Int? = nil
+    ) -> Self {
+        .init(combining: [
+            .infillPattern(.lateralLattice),
+            angle1.map(Self.lateralLatticeAngle1),
+            angle2.map(Self.lateralLatticeAngle2),
+            density.map(Self.infillDensity),
+        ])
+    }
+
     /// Disables support for this object, overriding whatever the slicer profile enables.
     static var noSupport: Self {
         .enableSupport(false)

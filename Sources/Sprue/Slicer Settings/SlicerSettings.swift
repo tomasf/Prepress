@@ -46,6 +46,9 @@ public enum InfillPattern: Sendable {
     /// Bambu Studio and OrcaSlicer only. Creality Print has this pattern but spells it differently
     /// and doesn't accept Bambu's spelling, so it's ignored there.
     case lockedZag
+    /// The "Lateral Lattice" pattern, shaped by ``SlicerSetting/lateralLatticeAngle1(_:)`` and
+    /// ``SlicerSetting/lateralLatticeAngle2(_:)``. **OrcaSlicer and Creality Print.**
+    case lateralLattice
     case monotonic
     case monotonicLine
     /// PrusaSlicer only.
@@ -77,6 +80,7 @@ public enum InfillPattern: Sendable {
         case .zigzag: "zigzag"
         case .crossZag: "crosszag"
         case .lockedZag: "lockedzag"
+        case .lateralLattice: "lateral-lattice"
         case .monotonic: "monotonic"
         case .monotonicLine: "monotonicline"
         case .stars: nil
@@ -106,6 +110,7 @@ public enum InfillPattern: Sendable {
         case .zigzag: "zigzag"
         case .crossZag: nil
         case .lockedZag: nil
+        case .lateralLattice: nil
         case .monotonic: "monotonic"
         case .monotonicLine: "monotoniclines"
         case .stars: "stars"
