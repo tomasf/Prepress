@@ -2,10 +2,10 @@ import Foundation
 import Testing
 import Cadova
 import Zip
-@testable import Sprue
+@testable import Prepress
 
 /// End-to-end coverage: what actually lands in the finished 3MF, read back out of the archive rather
-/// than taken from Sprue's own bookkeeping.
+/// than taken from Prepress's own bookkeeping.
 struct SlicerConfigArchiveTests {
     @Test func `prusa volume range matches the mesh actually written`() async throws {
         // The one that matters most. PrusaSlicer validates this range against the serialized mesh and

@@ -352,7 +352,7 @@ public enum TopSurfaceExpansionDirection: String, Sendable {
 // MARK: - Setting values
 
 /// A typed, slicer-agnostic print setting, ready to be lowered into the per-object config sidecars
-/// Sprue embeds in its 3MF output.
+/// Prepress embeds in its 3MF output.
 ///
 /// Construct these through the static factory methods below (e.g. `.enableSupport(true)`,
 /// `.infillDensity(15)`) rather than by hand, so each setting's value can only be constructed with
@@ -371,7 +371,7 @@ public enum TopSurfaceExpansionDirection: String, Sendable {
 ///
 /// ## Slicer support
 ///
-/// A setting whose documentation carries no slicer note is understood by every slicer Sprue writes
+/// A setting whose documentation carries no slicer note is understood by every slicer Prepress writes
 /// for: Bambu Studio, OrcaSlicer, Creality Print and the other Bambu-derived vendor slicers,
 /// PrusaSlicer, and SuperSlicer. Anything narrower says so in bold at the end of its description:
 ///
@@ -383,7 +383,7 @@ public enum TopSurfaceExpansionDirection: String, Sendable {
 /// the object keeps whatever the loaded print profile specifies for it. Nothing fails to open, and
 /// nothing is approximated with a neighbouring option that means something subtly different.
 ///
-/// Sprue's own names are slicer-agnostic, so they can't match both vocabularies at once. Each setting
+/// Prepress's own names are slicer-agnostic, so they can't match both vocabularies at once. Each setting
 /// therefore records what the slicers call it in their own UIs ("Shown as …"), for finding the same
 /// option by hand. Where a name already matches everywhere, there's nothing to record and no note.
 ///
@@ -861,7 +861,7 @@ public extension SlicerSetting {
     /// Bambu Studio renamed this option in its forks, so both spellings are written for that flavor —
     /// each fork reads the one it knows and ignores the other.
     ///
-    /// All three slicers also accept a percentage here, which Sprue doesn't expose.
+    /// All three slicers also accept a percentage here, which Prepress doesn't expose.
     ///
     /// Shown as "Length of sparse infill anchor" in Bambu Studio, "Sparse infill anchor length" in its forks, and "Length of the infill anchor" in PrusaSlicer.
     static func infillAnchor(_ millimeters: Double) -> Self {
@@ -1200,7 +1200,7 @@ public extension SlicerSetting {
     /// Maximum combined layer height when combining sparse infill across multiple layers, in
     /// millimeters. **OrcaSlicer and Creality Print.**
     ///
-    /// OrcaSlicer also accepts a percentage here, which Sprue doesn't expose.
+    /// OrcaSlicer also accepts a percentage here, which Prepress doesn't expose.
     ///
     /// Shown as "Infill combination - Max layer height" in OrcaSlicer and Creality Print.
     static func infillCombinationMaxLayerHeight(_ millimeters: Double) -> Self {

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import Cadova
 import Zip
-@testable import Sprue
+@testable import Prepress
 
 struct AssemblyTests {
     @Test func `a pose serializes as twelve column-major values`() {

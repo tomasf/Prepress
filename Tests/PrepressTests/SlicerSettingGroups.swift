@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct SlicerSettingGroupTests {
     @Test func `grouped settings omit unspecified parameters`() {

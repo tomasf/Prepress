@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct ComponentTests {
     @Test func `component data combines last-wins`() {

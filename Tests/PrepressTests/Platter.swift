@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct PlatterTests {
     @Test func `platter orients a component that contains a nested part`() async throws {
@@ -34,7 +34,7 @@ struct PlatterTests {
     }
 
     @Test func `platter skips parts that aren't components`() async throws {
-        // A plain part — even one with a Cadova natural up direction — is not a Sprue component, so
+        // A plain part — even one with a Cadova natural up direction — is not a Prepress component, so
         // the platter leaves it out rather than dropping it on the bed in an arbitrary orientation.
         let part = Part("Plain")
         let capture = BoundsCapture()

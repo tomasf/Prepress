@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct SlicerSettingTests {
     @Test func `infill pattern lowers to each slicer's own vocabulary`() {

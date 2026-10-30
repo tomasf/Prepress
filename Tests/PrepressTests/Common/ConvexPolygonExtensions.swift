@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 extension ConvexPolygon {
     /// Independent separating-axis overlap test, kept separate from the nester's own no-fit-polygon

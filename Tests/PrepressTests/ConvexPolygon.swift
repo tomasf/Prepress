@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct ConvexPolygonTests {
     @Test func `convex hull removes collinear and duplicate points`() {

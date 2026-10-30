@@ -1,7 +1,7 @@
 import Foundation
 import Cadova
 import Zip
-@testable import Sprue
+@testable import Prepress
 
 extension Data {
     var utf8String: String { String(decoding: self, as: UTF8.self) }

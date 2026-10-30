@@ -20,7 +20,7 @@ import Cadova
 // directly, so each option's per-slicer lowering stays defined in exactly one place.
 //
 // Slicer support is documented per parameter, following the convention described on `SlicerSetting`:
-// a parameter with no slicer note is understood by every slicer Sprue writes for, and one that is
+// a parameter with no slicer note is understood by every slicer Prepress writes for, and one that is
 // narrower says so in bold. A group can therefore be partly universal — `.ironing(.top, spacing: 0.1,
 // direction: 45°)` sets the spacing everywhere and the direction only for Bambu Studio and its forks.
 

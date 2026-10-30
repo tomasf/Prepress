@@ -95,7 +95,7 @@ enum BambuSettingKey: String, Sendable {
     /// `<object>` element is never consulted. An object with settings but no `name` metadata
     /// therefore loads with a blank name.
     ///
-    /// Sprue fills this in automatically from the part's name, so you don't normally set it. Doing so
+    /// Prepress fills this in automatically from the part's name, so you don't normally set it. Doing so
     /// explicitly overrides that name for the Bambu-lineage slicers only, without renaming the part
     /// or affecting PrusaSlicer.
     case name

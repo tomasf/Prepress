@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct SlicerConfigWriterTests {
     @Test func `bambu config formats entries and escapes values`() throws {

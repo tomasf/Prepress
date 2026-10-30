@@ -7,7 +7,7 @@ import Cadova
 /// remembers the arrangement it started from, which is otherwise thrown away: the exported file would
 /// be a plate of loose parts with nothing recording how they fit together.
 ///
-/// Sprue is the only thing in the pipeline that knows this. A slicer opening the file sees parts side
+/// Prepress is the only thing in the pipeline that knows this. A slicer opening the file sees parts side
 /// by side on a bed; the model knows where each one came from.
 struct AssemblyPlacements: ResultElement {
     /// Per part, the transform taking its mesh from where it sits on the plate back to where it sat in

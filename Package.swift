@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "Sprue",
+    name: "Prepress",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "Sprue", targets: ["Sprue"]),
+        .library(name: "Prepress", targets: ["Prepress"]),
     ],
     dependencies: [
         // Local while `ModelArchive.mainPart` is only on Cadova's dev branch. Swap back to
@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "Sprue",
+            name: "Prepress",
             dependencies: [
                 "Cadova",
                 .product(name: "Nodal", package: "Nodal"),
@@ -29,8 +29,8 @@ let package = Package(
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
         .testTarget(
-            name: "SprueTests",
-            dependencies: ["Sprue", "Cadova", .product(name: "Zip", package: "Zip")],
+            name: "PrepressTests",
+            dependencies: ["Prepress", "Cadova", .product(name: "Zip", package: "Zip")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
     ]

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import Cadova
 import Zip
-@testable import Sprue
+@testable import Prepress
 
 struct PartConfigurationTests {
     @Test func `withSlicerSettings configures a plain part with no component`() async throws {

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import Cadova
 import Zip
-@testable import Sprue
+@testable import Prepress
 
 /// A die: a cube with its pips as a part of their own, so the slicer can print them in a second color.
 /// The motivating case for parts riding along inside a component.

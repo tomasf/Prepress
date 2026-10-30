@@ -1,30 +1,30 @@
-# Sprue
+# Prepress
 
-Sprue is a library for [Cadova](https://github.com/tomasf/Cadova) that smooths out the workflow of developing a model for 3D printing.
+Prepress is a library for [Cadova](https://github.com/tomasf/Cadova) that smooths out the workflow of developing a model for 3D printing.
 
 Writing a model in code makes the model itself easy to change, but the steps around it stay stubbornly manual. Every regeneration means arranging the parts on the bed again, standing up the ones that print on their side, and re-entering the per-object settings you picked last time.
 
-Sprue's goal is to move those steps into code, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. This is done by per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened, and by declaring the printable pieces of a model as *components*, which Sprue orients, multiplies and lays out on a platter. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
+Prepress's goal is to move those steps into code, where each one is expressed once, sits next to the geometry it describes, and stays correct as the design evolves. This is done by per-object slicer settings that travel inside the exported 3MF and apply themselves when the file is opened, and by declaring the printable pieces of a model as *components*, which Prepress orients, multiplies and lays out on a platter. The library is meant to keep growing along those lines, as more of the routine turns out to be worth automating.
 
 ## Installation
 
-Integrate Sprue into your project with the Swift Package Manager by adding it as a dependency in your `Package.swift` file:
+Integrate Prepress into your project with the Swift Package Manager by adding it as a dependency in your `Package.swift` file:
 
 ```swift
-.package(url: "https://github.com/tomasf/Sprue.git", .upToNextMinor(from: "0.1.0"))
+.package(url: "https://github.com/tomasf/Prepress.git", .upToNextMinor(from: "0.1.0"))
 ```
 
-Then, import Sprue where it's needed:
+Then, import Prepress where it's needed:
 
 ```swift
-import Sprue
+import Prepress
 ```
 
 ## Usage
 
 ### Slicer settings
 
-Per-object print settings can be declared on the geometry they belong to. They're written into the exported 3MF, so opening the file applies them per object with no manual configuration in the slicer. `withSlicerSettings` works on any Cadova part, and on the model's own geometry where there's no part at all, so nothing else in Sprue is needed to use it. List the settings inline, or pass an array where you already have one:
+Per-object print settings can be declared on the geometry they belong to. They're written into the exported 3MF, so opening the file applies them per object with no manual configuration in the slicer. `withSlicerSettings` works on any Cadova part, and on the model's own geometry where there's no part at all, so nothing else in Prepress is needed to use it. List the settings inline, or pass an array where you already have one:
 
 ```swift
 Box(x: 30, y: 30, z: 10)
@@ -38,7 +38,7 @@ Box(x: 30, y: 30, z: 10)
 
 The modifier has to be applied *within* the part it configures, as above. Written the other way round (`.inPart(…).withSlicerSettings(…)`) it configures whatever encloses that part, the part around it, or the model's main geometry where there is none, because a part captures its contents where it's declared and anything chained on afterwards lands outside it. Settings declared on a nested part stay with that part and never reach the part around it.
 
-Settings are slicer-agnostic. Each one knows how to express itself in both config formats Sprue writes: Bambu Studio's, also read by OrcaSlicer, Creality Print and the other Bambu-derived slicers, and PrusaSlicer's, also read by SuperSlicer. Both sidecars go into the same file, and each slicer reads the one it knows.
+Settings are slicer-agnostic. Each one knows how to express itself in both config formats Prepress writes: Bambu Studio's, also read by OrcaSlicer, Creality Print and the other Bambu-derived slicers, and PrusaSlicer's, also read by SuperSlicer. Both sidecars go into the same file, and each slicer reads the one it knows.
 
 Not every option exists everywhere. A setting with no equivalent in a slicer is simply left out of that slicer's file, so the object keeps whatever the loaded print profile specifies. Nothing is approximated with a neighboring option that means something subtly different. Anything narrower than universal says so in its documentation, for instance **Bambu Studio and its forks only** or **OrcaSlicer only**.
 
@@ -120,7 +120,7 @@ Components are laid out with a no-fit-polygon nester over each one's footprint. 
 
 ### Assembly view
 
-Flattening a model onto the bed normally throws away the arrangement it started from, leaving a plate of loose parts with nothing recording how they fit together. Sprue writes that arrangement into the 3MF, so Bambu Studio's assembly view can show the model as designed while the plate stays laid out flat.
+Flattening a model onto the bed normally throws away the arrangement it started from, leaving a plate of loose parts with nothing recording how they fit together. Prepress writes that arrangement into the 3MF, so Bambu Studio's assembly view can show the model as designed while the plate stays laid out flat.
 
 ## License
 

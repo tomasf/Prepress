@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import Cadova
-@testable import Sprue
+@testable import Prepress
 
 struct ComponentSpacingTests {
     @Test func `component spacing defaults and round-trips`() {
