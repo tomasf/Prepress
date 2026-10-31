@@ -3,6 +3,106 @@ import Testing
 import Cadova
 @testable import Prepress
 
+private extension ComponentTag {
+    static let wheels = ComponentTag("Wheels")
+    static let flexible = ComponentTag("Flexible")
+    static let absent = ComponentTag("Absent")
+}
+
+struct PlatterSelectionTests {
+    /// The names of the parts a platter of this assembly emits under a selection.
+    private func partNames(
+        only: Set<ComponentTag>? = nil,
+        excluding: Set<ComponentTag> = [],
+        of assembly: any Geometry3D
+    ) async throws -> Set<String> {
+        let capture = BoundsCapture()
+        let platter = assembly
+            .onPlatter(only: only, excluding: excluding)
+            .evaluating { geometry, evaluator in
+                capture.partNames = Set(await evaluator.parts(of: geometry).keys.map(\.name))
+                return geometry
+            }
+        _ = try await ModelFileGenerator.build { platter }
+        return try #require(capture.partNames)
+    }
+
+    private var assembly: any Geometry3D {
+        Box(10).inComponent(name: "Rim", tags: [.wheels])
+            .adding {
+                Box(10).translated(x: 40).inComponent(name: "Tire", tags: [.wheels, .flexible])
+                Box(10).translated(x: 80).inComponent(name: "Bushing", tags: [.flexible])
+                Box(10).translated(x: 120).inComponent(name: "Chassis")
+            }
+    }
+
+    @Test func `no selection takes every component`() async throws {
+        #expect(try await partNames(of: assembly) == ["Rim", "Tire", "Bushing", "Chassis"])
+    }
+
+    @Test func `only takes components with any of the tags`() async throws {
+        #expect(try await partNames(only: [.wheels], of: assembly) == ["Rim", "Tire"])
+        #expect(try await partNames(only: [.wheels, .flexible], of: assembly) == ["Rim", "Tire", "Bushing"])
+    }
+
+    @Test func `excluding is a catch-all that keeps untagged components`() async throws {
+        #expect(try await partNames(excluding: [.wheels], of: assembly) == ["Bushing", "Chassis"])
+    }
+
+    @Test func `excluding wins over only`() async throws {
+        #expect(try await partNames(only: [.wheels], excluding: [.flexible], of: assembly) == ["Rim"])
+    }
+
+    @Test func `a nested component is selected by its own tags`() async throws {
+        let assembly = Box(10)
+            .adding { Box(4).translated(z: 10).inComponent(name: "Inner", tags: [.flexible]) }
+            .inComponent(name: "Outer", tags: [.wheels])
+
+        #expect(try await partNames(only: [.wheels], of: assembly) == ["Outer"])
+        #expect(try await partNames(only: [.flexible], of: assembly) == ["Inner"])
+    }
+
+    @Test func `a plain part follows the component it's declared in`() async throws {
+        let assembly = Box(10)
+            .adding { Box(4).translated(z: 10).inPart(name: "Pips") }
+            .inComponent(name: "Die", tags: [.wheels])
+
+        #expect(try await partNames(only: [.wheels], of: assembly) == ["Die", "Pips"])
+        #expect(try await partNames(excluding: [.wheels], of: assembly).isEmpty)
+    }
+
+    @Test func `numbering counts only what the platter holds`() async throws {
+        let wheel = Component("Wheel", tags: [.wheels])
+        let spare = Component("Wheel", tags: [.flexible], platterOptions: .init(quantity: 2))
+        let assembly = Box(10).inComponent(wheel)
+            .adding { Box(10).translated(x: 40).inComponent(spare) }
+
+        #expect(try await partNames(only: [.wheels], of: assembly) == ["Wheel"])
+        #expect(try await partNames(only: [.flexible], of: assembly) == ["Wheel 1", "Wheel 2"])
+    }
+
+    @Test func `an empty platter still builds`() async throws {
+        #expect(try await partNames(only: [], of: assembly).isEmpty)
+    }
+
+    @Test func `problems name unknown tags and empty platters`() {
+        let rim = Component("Rim", tags: [.wheels])
+        let chassis = Component("Chassis")
+
+        // Nothing was asked for, so nothing can be wrong, even with no components at all.
+        #expect(ComponentSelection(only: nil, excluding: []).problems(in: []).isEmpty)
+        #expect(ComponentSelection(only: [.wheels], excluding: []).problems(in: [rim, chassis]).isEmpty)
+
+        let unknown = ComponentSelection(only: nil, excluding: [.absent]).problems(in: [rim, chassis])
+        #expect(unknown.count == 1)
+        #expect(unknown.first?.contains("Absent") == true)
+
+        // An unknown tag being all that was asked for is both things at once.
+        #expect(ComponentSelection(only: [.absent], excluding: []).problems(in: [rim, chassis]).count == 2)
+        #expect(ComponentSelection(only: [], excluding: []).problems(in: [rim, chassis]).count == 1)
+    }
+}
+
 struct PlatterTests {
     @Test func `platter orients a component that contains a nested part`() async throws {
         let main = Component("Main", platterOptions: .init(separateSolids: false))

@@ -2,16 +2,16 @@ import Foundation
 
 /// The parts of a ``Component``'s configuration that only matter once it's laid out on a platter.
 ///
-/// Everything here is inert until ``Cadova/Geometry3D/onPlatter(removingMaterials:)`` is called: a
+/// Everything here is inert until ``Cadova/Geometry3D/onPlatter(only:excluding:removingMaterials:)`` is called: a
 /// component exported on its own is emitted once, whole, whatever these say. They're grouped for that
 /// reason, and because the defaults suit the usual way of working.
 ///
 /// The usual way being: build the model as it looks assembled, with each piece marked as a component
-/// where it sits, then put the whole thing on a platter. Several bodies marked with the *same*
-/// component merge into one part, so four wheels placed around an assembly arrive at the platter as
-/// one part holding four disconnected solids — and ``separateSolids`` is what splits them back apart
-/// to be laid out individually. ``quantity`` is for the other case, where the model contains one of
-/// something but the print needs several.
+/// where it sits, then put the whole thing on a platter. Each declaration is laid out as its own piece,
+/// so four wheels marked with one component around an assembly arrive at the platter as four pieces.
+/// ``separateSolids`` decides what happens to a single declaration holding several disconnected solids.
+/// ``quantity`` is for the other case, where the model contains one of something but the print needs
+/// several.
 public struct PlatterOptions: Sendable, Hashable {
     /// The number of copies to lay out. Always at least 1.
     public var quantity: Int {

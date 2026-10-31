@@ -29,6 +29,10 @@ public struct Component: Sendable {
     /// The name of the component, as it appears in the output file.
     public let name: String
 
+    /// Labels saying what this component is, for selecting it when an assembly is split across several
+    /// platters. See ``ComponentTag``.
+    public let tags: Set<ComponentTag>
+
     /// The default material for geometry in this component that doesn't specify its own.
     internal let material: Material?
 
@@ -38,8 +42,15 @@ public struct Component: Sendable {
     /// Already collapsed to one value per key, per slicer flavor, in declaration order.
     internal let slicerSettings: ResolvedSlicerSettings
 
-    private init(name: String, material: Material?, platterOptions: PlatterOptions, settings: [SlicerSetting]) {
+    private init(
+        name: String,
+        tags: Set<ComponentTag>,
+        material: Material?,
+        platterOptions: PlatterOptions,
+        settings: [SlicerSetting]
+    ) {
         self.name = name
+        self.tags = tags
         self.material = material
         self.platterOptions = platterOptions
         self.slicerSettings = settings.resolved
@@ -49,6 +60,8 @@ public struct Component: Sendable {
     ///
     /// - Parameters:
     ///   - name: The name of the component, as it appears in the output file.
+    ///   - tags: Labels saying what this component is, for selecting it when an assembly is split across
+    ///     several platters. See ``ComponentTag``.
     ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
@@ -60,12 +73,14 @@ public struct Component: Sendable {
     ///     ``Cadova/Geometry3D/withSlicerSettings(_:)`` on that part instead.
     public init(
         _ name: String,
+        tags: Set<ComponentTag> = [],
         platterOptions: PlatterOptions = .default,
         color: Color? = nil,
         settings: [SlicerSetting] = []
     ) {
         self.init(
             name: name,
+            tags: tags,
             material: color.map { Material.plain($0) },
             platterOptions: platterOptions,
             settings: settings
@@ -89,26 +104,27 @@ public struct Component: Sendable {
 
     /// Creates a component with a physically-based default material.
     ///
-    /// See ``init(_:platterOptions:color:settings:)``.
+    /// See ``init(_:tags:platterOptions:color:settings:)``.
     public init(
         _ name: String,
+        tags: Set<ComponentTag> = [],
         platterOptions: PlatterOptions = .default,
         material: Material?,
         settings: [SlicerSetting] = []
     ) {
-        self.init(name: name, material: material, platterOptions: platterOptions, settings: settings)
+        self.init(name: name, tags: tags, material: material, platterOptions: platterOptions, settings: settings)
     }
 }
 
 /// Records that a piece of geometry is a printable ``Component`` that
-/// ``Cadova/Geometry3D/onPlatter(removingMaterials:)`` orients, multiplies and packs.
+/// ``Cadova/Geometry3D/onPlatter(only:excluding:removingMaterials:)`` orients, multiplies and packs.
 ///
 /// Only geometry explicitly declared with ``Cadova/Geometry3D/inComponent(_:upDirection:)`` (or its `name:` variant)
 /// carries this; the platter ignores everything else, including plain Cadova
 /// ``Cadova/Geometry3D/inPart(_:)`` parts declared outside a component. A part with no declared print
 /// orientation can't be oriented meaningfully, so it's left out rather than dropped onto the bed in an
 /// arbitrary rotation — except a part declared *inside* a component, which has no orientation of its
-/// own to lose: it travels with its host instead. See ``onPlatter(removingMaterials:)``.
+/// own to lose: it travels with its host instead. See ``onPlatter(only:excluding:removingMaterials:)``.
 ///
 /// The up direction is stored together with the environment transform in effect where it was declared,
 /// so the packer can re-express it in whatever frame it reads — keeping orientation correct even when
@@ -167,9 +183,9 @@ private struct ComponentEntry {
 
 public extension Geometry3D {
     /// Declares this geometry as the given printable component, for
-    /// ``onPlatter(removingMaterials:)``.
+    /// ``onPlatter(only:excluding:removingMaterials:)``.
     ///
-    /// Only components are laid out by ``onPlatter(removingMaterials:)``; plain Cadova
+    /// Only components are laid out by ``onPlatter(only:excluding:removingMaterials:)``; plain Cadova
     /// ``Cadova/Geometry3D/inPart(_:)`` parts are left out.
     ///
     /// Each declaration is its own piece. Marking several bodies with the same component is how one
@@ -182,7 +198,7 @@ public extension Geometry3D {
     /// orientation the piece is printed in.
     ///
     /// Any component `settings` work whether or not the component goes through
-    /// ``onPlatter(removingMaterials:)`` — if it does, the settings follow whatever final
+    /// ``onPlatter(only:excluding:removingMaterials:)`` — if it does, the settings follow whatever final
     /// part(s) the layout produces (e.g. numbered copies for a `quantity` above 1).
     ///
     /// - Parameters:
@@ -240,22 +256,25 @@ public extension Geometry3D {
     ///   - name: The name of the component, as it appears in the output file.
     ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up when
     ///     the component is printed. Defaults to `.up`.
+    ///   - tags: Labels saying what this component is, for selecting it when an assembly is split across
+    ///     several platters. See ``ComponentTag``.
     ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
     ///   - settings: Per-object slicer settings written into the platter's config sidecars
     ///     (e.g. `[.infillDensity(15)]`), for both Bambu Studio and PrusaSlicer and their forks. See
-    ///     ``onPlatter(removingMaterials:)``.
+    ///     ``onPlatter(only:excluding:removingMaterials:)``.
     /// - Returns: The geometry declared as a named printable component.
     func inComponent(
         name: String,
         upDirection: Direction3D = .up,
+        tags: Set<ComponentTag> = [],
         platterOptions: PlatterOptions = .default,
         color: Color? = nil,
         settings: [SlicerSetting] = []
     ) -> any Geometry3D {
         inComponent(
-            Component(name, platterOptions: platterOptions, color: color, settings: settings),
+            Component(name, tags: tags, platterOptions: platterOptions, color: color, settings: settings),
             upDirection: upDirection
         )
     }
@@ -267,13 +286,15 @@ public extension Geometry3D {
     ///     .inComponent(name: "Lightweight", settings: .infill(.gyroid, density: 20), .wallCount(4))
     /// ```
     ///
-    /// The same as ``inComponent(name:upDirection:platterOptions:color:settings:)`` with an array,
+    /// The same as ``inComponent(name:upDirection:tags:platterOptions:color:settings:)`` with an array,
     /// spelled without the brackets. Pass an array where the settings already are one.
     ///
     /// - Parameters:
     ///   - name: The name of the component, as it appears in the output file.
     ///   - upDirection: The direction, in this geometry's own coordinate system, that should point up when
     ///     the component is printed. Defaults to `.up`.
+    ///   - tags: Labels saying what this component is, for selecting it when an assembly is split across
+    ///     several platters. See ``ComponentTag``.
     ///   - platterOptions: Options that only apply once the component is laid out on a platter, such as
     ///     how many copies to make. See ``PlatterOptions``.
     ///   - color: An optional default color for geometry that doesn't specify its own material.
@@ -282,6 +303,7 @@ public extension Geometry3D {
     func inComponent(
         name: String,
         upDirection: Direction3D = .up,
+        tags: Set<ComponentTag> = [],
         platterOptions: PlatterOptions = .default,
         color: Color? = nil,
         settings: SlicerSetting...
@@ -289,15 +311,28 @@ public extension Geometry3D {
         inComponent(
             name: name,
             upDirection: upDirection,
+            tags: tags,
             platterOptions: platterOptions,
             color: color,
             settings: settings
         )
     }
 
-    /// Lays out every printable component in this geometry on a single platter for 3D printing.
+    /// Lays out the printable components in this geometry on a single platter for 3D printing.
     ///
-    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:platterOptions:color:settings:)``
+    /// By default every component is included. An assembly too large for one bed can be split by building
+    /// one platter per model, selecting by ``ComponentTag``. Prepress knows nothing about the bed, so it's
+    /// up to the selection to make each platter fit:
+    ///
+    /// ```swift
+    /// await Model("Wheels") { car.onPlatter(only: [.wheels]) }
+    /// await Model("The rest") { car.onPlatter(excluding: [.wheels]) }
+    /// ```
+    ///
+    /// A selection that names a tag no component has, or that leaves the platter empty, is reported as a
+    /// warning on standard error.
+    ///
+    /// Each component — declared with ``inComponent(_:upDirection:)`` or ``inComponent(name:upDirection:tags:platterOptions:color:settings:)``
     /// — is rotated so its declared up direction points to +Z, dropped so it rests on
     /// the `z = 0` plane, and then packed together with the others using the no-fit polygon nester.
     /// Components configured with a quantity contribute that many copies, each packed and emitted as its
@@ -322,18 +357,31 @@ public extension Geometry3D {
     /// ``Cadova/Geometry/withComponentSpacing(_:)``.
     ///
     /// - Parameters:
+    ///   - only: Includes just the components with at least one of these tags. Defaults to `nil`, which
+    ///     doesn't limit the selection; an empty set selects nothing. Each component is judged on its own
+    ///     tags, so one nested in an included component isn't included along with it, and one nested in a
+    ///     left-out component can still be included. A plain part declared inside a component follows it.
+    ///   - excluding: Leaves out components with any of these tags, even ones `only` includes. Listing
+    ///     every tag the other platters select makes a catch-all, so a component added later can't go
+    ///     unprinted.
     ///   - removingMaterials: When `true`, strips all colors and materials from the packed result — both
     ///     those applied within each component and the parts' default materials — so the platter prints
     ///     as a single uniform material. Defaults to `false`, preserving each component's materials.
     /// - Returns: The components packed onto a platter, each preserved as its own part.
-    func onPlatter(removingMaterials: Bool = false) -> any Geometry3D {
-        evaluating { base, evaluator in
+    func onPlatter(
+        only: Set<ComponentTag>? = nil,
+        excluding: Set<ComponentTag> = [],
+        removingMaterials: Bool = false
+    ) -> any Geometry3D {
+        let selection = ComponentSelection(only: only, excluding: excluding)
+        return evaluating { base, evaluator in
             @Environment(\.footprintMargin) var margin
             // The frame the layout is read in. Resolving it here, once, is what lets each piece's pose
             // be computed as a single transform below rather than emerging from a chain of modifiers.
             @Environment(\.transform) var readingTransform
             let placed = await packComponents(
                 of: base,
+                selection: selection,
                 using: evaluator,
                 margin: margin,
                 readingTransform: readingTransform,
@@ -352,6 +400,7 @@ public extension Geometry3D {
 /// builder — so it can use ordinary control flow (loops, `continue`) while gathering the components.
 private func packComponents(
     of base: any Geometry3D,
+    selection: ComponentSelection,
     using evaluator: GeometryEvaluator,
     margin: Double,
     readingTransform: Transform3D,
@@ -370,8 +419,12 @@ private func packComponents(
     // skipped rather than guessed at. Reading the data first also gives a stable layout order: several
     // declarations of one component share a name, so position in the assembly breaks the tie.
     var declarations: [Declaration] = []
+    var allComponents: [Component] = []
+    defer { selection.reportProblems(in: allComponents) }
     for (_, partGeometry) in partGeometries {
         guard let data = await evaluator.result(ComponentData.self, of: partGeometry).value else { continue }
+        allComponents.append(data.component)
+        guard selection.includes(data.component) else { continue }
 
         // Parts declared inside this one travel with it as passengers rather than being dropped: found
         // by rescanning at the top level, since membership comes from the component's own catalog but

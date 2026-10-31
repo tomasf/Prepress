@@ -53,6 +53,8 @@ Grouped factories like `infill(_:density:…)`, `support(_:style:…)`, `brim(_:
 
 ### Components and the platter
 
+The idea is that you build the model as it looks assembled, with each printable piece marked as a component where it sits, and then put the whole assembly on a platter. The assembly stays the one description of the model, and the platter is derived from it: each piece is stood up in its print orientation and laid out flat on the bed.
+
 A component is a self-contained printable piece. Declare geometry as one with `inComponent`, then call `onPlatter` on the assembly:
 
 ```swift
@@ -93,7 +95,7 @@ Declaring a component also sets Cadova's `naturalUpDirection` environment value 
 
 A component carries a few settings that only mean anything once it's laid out, grouped into `PlatterOptions`.
 
-The usual way of working is to build the model as it looks assembled, marking each piece as a component where it sits, and put the whole thing on a platter. Several bodies marked with the *same* component merge into one part, so four wheels placed around an assembly arrive as one part holding four disconnected solids. They're laid out individually by default, which is what you want. Set `separateSolids` to `false` to keep a component's solids together as a rigid unit, for a print-in-place hinge or a captive nut:
+Each `inComponent` declaration is laid out as its own piece, so four wheels marked with one component around an assembly arrive as four pieces, named after the component and numbered. A single declaration holding several disconnected solids is split the same way by default. Set `separateSolids` to `false` to keep them together as a rigid unit, for a print-in-place hinge or a captive nut:
 
 ```swift
 hinge
@@ -116,7 +118,42 @@ Components are laid out with a no-fit-polygon nester over each one's footprint. 
     .withComponentSpacing(4)  // mm between neighboring parts; defaults to 2
 ```
 
-`onPlatter(removingMaterials:)` takes one further option: `removingMaterials` strips all colors so the platter prints as one uniform material.
+`onPlatter` also takes `removingMaterials`, which strips all colors so the platter prints as one uniform material.
+
+Prepress knows nothing about your printer's bed. Each `onPlatter` call lays out one plate as compactly as it can, however large that turns out to be, so the size only becomes a problem once you open the file in a slicer.
+
+### Several platters
+
+When an assembly doesn't fit on one bed, slicers can spread the parts over several plates, but which part lands where can change between runs. To decide for yourself, tag the components and build one platter per model, selecting by tag:
+
+```swift
+extension ComponentTag {
+    static let wheels = ComponentTag("Wheels")
+    static let flexible = ComponentTag("Flexible")
+}
+
+// Where the pieces are declared, inside the assembly:
+tire.inComponent(name: "Tire", tags: [.wheels, .flexible])
+rim.inComponent(name: "Rim", tags: [.wheels])
+chassis.inComponent(name: "Chassis")
+
+// Where the platters are built:
+await Model("Wheels") {
+    Car().onPlatter(only: [.wheels])
+}
+
+await Model("The rest") {
+    Car().onPlatter(excluding: [.wheels])
+}
+```
+
+`only` takes components with at least one of the listed tags, and `excluding` leaves out components with any of them. Used together, `excluding` wins. Ending with an `excluding` platter that lists every tag used by the others is a good habit, because a component you add later then lands there instead of never being printed.
+
+A component can have several tags, so overlapping selections can put it on two platters: the tire above would be on both an `only: [.wheels]` and an `only: [.flexible]` platter. Each model is built on its own, so Prepress can't warn about this.
+
+Each component is selected by its own tags. A component nested inside another doesn't inherit its tags, while a plain part declared inside a component follows it. A selection that names a tag no component has, or that leaves the platter empty, prints a warning.
+
+If the pieces of a platter already form a sub-assembly of their own, calling `onPlatter` on just that sub-assembly works too, with no tags needed.
 
 ### Assembly view
 

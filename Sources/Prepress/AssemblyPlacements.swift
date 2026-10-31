@@ -3,7 +3,7 @@ import Cadova
 
 /// Where each laid-out piece belongs in the assembled model.
 ///
-/// ``Cadova/Geometry3D/onPlatter(removingMaterials:)`` flattens an assembly onto the bed. This
+/// ``Cadova/Geometry3D/onPlatter(only:excluding:removingMaterials:)`` flattens an assembly onto the bed. This
 /// remembers the arrangement it started from, which is otherwise thrown away: the exported file would
 /// be a plate of loose parts with nothing recording how they fit together.
 ///

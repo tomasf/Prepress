@@ -128,7 +128,7 @@ public extension Geometry3D {
     /// The settings are embedded in the exported 3MF, in whichever of the two sidecar formats support
     /// each one, so the same file configures Bambu Studio and its forks as well as PrusaSlicer and
     /// SuperSlicer. This works for any part: a ``Component`` isn't needed, and neither is
-    /// ``onPlatter(removingMaterials:)`` — settings on a plain part are a complete use of this.
+    /// ``onPlatter(only:excluding:removingMaterials:)`` — settings on a plain part are a complete use of this.
     ///
     /// A part isn't needed either. Geometry that's in no part is exported as the model's own object,
     /// named after the model, and settings declared on it configure that object:
@@ -138,7 +138,7 @@ public extension Geometry3D {
     ///     .withSlicerSettings([.infillDensity(15)])
     /// ```
     ///
-    /// What ``onPlatter(removingMaterials:)`` emits is the components it packed and nothing else, so
+    /// What ``onPlatter(only:excluding:removingMaterials:)`` emits is the components it packed and nothing else, so
     /// geometry that isn't a component doesn't reach the file and settings declared on it have no
     /// object to configure.
     ///

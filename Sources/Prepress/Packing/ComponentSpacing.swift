@@ -8,7 +8,7 @@ public extension EnvironmentValues {
     ///
     /// This is the distance between the parts themselves, which is what a print needs: enough room to
     /// get a scraper between them, and enough that their brims or elephant-foot bulges don't merge.
-    /// Used by ``Cadova/Geometry3D/onPlatter(removingMaterials:separatingParts:)``. Defaults to 2.
+    /// Used by ``Cadova/Geometry3D/onPlatter(only:excluding:removingMaterials:)``. Defaults to 2.
     var componentSpacing: Double {
         get { self[Self.spacingKey] as? Double ?? 2 }
         set { self[Self.spacingKey] = newValue }
