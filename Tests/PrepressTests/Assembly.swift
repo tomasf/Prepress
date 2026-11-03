@@ -70,12 +70,12 @@ struct AssemblyTests {
             high = Vector3D.max(high, point)
         }
 
-        #expect(abs(low.x - assembled.minimum.x) < 1e-3, "x \(low.x) vs \(assembled.minimum.x)")
-        #expect(abs(low.y - assembled.minimum.y) < 1e-3, "y \(low.y) vs \(assembled.minimum.y)")
-        #expect(abs(low.z - assembled.minimum.z) < 1e-3, "z \(low.z) vs \(assembled.minimum.z)")
-        #expect(abs(high.x - assembled.maximum.x) < 1e-3)
-        #expect(abs(high.y - assembled.maximum.y) < 1e-3)
-        #expect(abs(high.z - assembled.maximum.z) < 1e-3)
+        #expect(Swift.abs(low.x - assembled.minimum.x) < 1e-3, "x \(low.x) vs \(assembled.minimum.x)")
+        #expect(Swift.abs(low.y - assembled.minimum.y) < 1e-3, "y \(low.y) vs \(assembled.minimum.y)")
+        #expect(Swift.abs(low.z - assembled.minimum.z) < 1e-3, "z \(low.z) vs \(assembled.minimum.z)")
+        #expect(Swift.abs(high.x - assembled.maximum.x) < 1e-3)
+        #expect(Swift.abs(high.y - assembled.maximum.y) < 1e-3)
+        #expect(Swift.abs(high.z - assembled.maximum.z) < 1e-3)
     }
 
     @Test func `part meshes are stored in plate coordinates`() async throws {
@@ -96,7 +96,7 @@ struct AssemblyTests {
         for (id, _) in try archive.assembledPoses() {
             let vertices = try archive.vertices(forObject: id)
             let minZ = vertices.map(\.z).min() ?? .infinity
-            #expect(abs(minZ) < 1e-6, "object \(id) rests at z = \(minZ)")
+            #expect(Swift.abs(minZ) < 1e-6, "object \(id) rests at z = \(minZ)")
         }
     }
 

@@ -8,7 +8,7 @@ struct ConvexPolygonTests {
         // Duplicates and a midpoint on the bottom edge should collapse to the four corners.
         let poly = ConvexPolygon(hullOf: [[0, 0], [5, 0], [10, 0], [10, 10], [0, 10], [0, 10], [0, 0]])
         #expect(poly.vertices.count == 4)
-        #expect(abs(poly.area - 100) < 1e-9)
+        #expect(Swift.abs(poly.area - 100) < 1e-9)
     }
 
     @Test func `circumscribed polygon contains the original within its vertex budget`() {

@@ -130,7 +130,7 @@ struct PlatterTests {
             platter
         }
 
-        #expect(abs((capture.bounds?.size.z ?? 0) - 10) < 1e-6)
+        #expect(Swift.abs((capture.bounds?.size.z ?? 0) - 10) < 1e-6)
     }
 
     @Test func `platter skips parts that aren't components`() async throws {
@@ -182,7 +182,7 @@ struct PlatterTests {
             platter
         }
 
-        #expect(abs((capture.bounds?.size.z ?? 0) - 5) < 1e-6)
+        #expect(Swift.abs((capture.bounds?.size.z ?? 0) - 5) < 1e-6)
     }
 
     @Test func `platter does not mirror a part across its declared up direction`() async throws {
@@ -213,10 +213,10 @@ struct PlatterTests {
                         let segment = LineSegment3D(from: [x, y, -1], to: [x, y, bounds.maximum.z + 1])
                         let zs = await evaluator.surfaces(of: partGeometry, along: segment)
                             .map(\.position.z)
-                        if let minZ = zs.min(), abs(minZ) < 1e-6 {
+                        if let minZ = zs.min(), Swift.abs(minZ) < 1e-6 {
                             bottomHits += 1
                         }
-                        if let maxZ = zs.max(), abs(maxZ - bounds.maximum.z) < 1e-6 {
+                        if let maxZ = zs.max(), Swift.abs(maxZ - bounds.maximum.z) < 1e-6 {
                             topHits += 1
                         }
                     }
@@ -230,7 +230,7 @@ struct PlatterTests {
             platter
         }
 
-        #expect(abs((capture.bounds?.size.z ?? 0) - 12) < 1e-6)
+        #expect(Swift.abs((capture.bounds?.size.z ?? 0) - 12) < 1e-6)
         #expect((capture.bottomSurfaceHitCount ?? 0) > (capture.topSurfaceHitCount ?? 0))
     }
 
@@ -267,8 +267,8 @@ struct PlatterTests {
         let sizes = try #require(capture.sizes)
         #expect(sizes.count == 2)
         for (name, size) in sizes {
-            let diameter = abs(size.z - 50) < 1e-3 ? 5.0 : 6.0
-            #expect(abs(size.z - (diameter == 5 ? 50 : 30)) < 1e-3, "\(name) is \(size.z) tall")
+            let diameter = Swift.abs(size.z - 50) < 1e-3 ? 5.0 : 6.0
+            #expect(Swift.abs(size.z - (diameter == 5 ? 50 : 30)) < 1e-3, "\(name) is \(size.z) tall")
             #expect(size.x < diameter + 0.1 && size.y < diameter + 0.1, "\(name) footprint is \(size)")
         }
     }
