@@ -55,6 +55,10 @@ Grouped factories like `infill(_:density:…)`, `support(_:style:…)`, `brim(_:
 
 The idea is that you build the model as it looks assembled, with each printable piece marked as a component where it sits, and then put the whole assembly on a platter. The assembly stays the one description of the model, and the platter is derived from it: each piece is stood up in its print orientation and laid out flat on the bed.
 
+<p align="center">
+  <img src="ReadmeImages/assembly-to-platter.png" width="760" alt="A robot arm as assembled, with its arm raised and tool head pointing forward, and the same three parts laid out on a print bed: the arm lying flat and the tool head standing on its flange">
+</p>
+
 A component is a self-contained printable piece. Declare geometry as one with `inComponent`, then call `onPlatter` on the assembly:
 
 ```swift
