@@ -15,6 +15,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+    # The image's default Xcode is 16.4, whose macOS 15.5 SDK the Swift 6.3 toolchain can't build
+    # against with C++ interop. Select the newest stable Xcode 26 the image has instead.
+    - name: Select Xcode
+      if: runner.os == 'macOS'
+      run: |
+        xcode=$(ls -d /Applications/Xcode_26*.app | grep -iv beta | sort -V | tail -1)
+        test -n "$xcode" || { echo "No Xcode 26 on this image"; ls -d /Applications/Xcode*.app; exit 1; }
+        sudo xcode-select -s "$xcode"
+        xcodebuild -version
+
     - uses: SwiftyLab/setup-swift@latest
       with:
         swift-version: '6.3.2'
