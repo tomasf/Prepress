@@ -502,14 +502,17 @@ private func packComponents(
         // Separating a component into its disconnected solids leaves no principled answer to which
         // solid a passenger belongs to, so a component that has any is laid out as one piece.
         let separateSolids = data.component.platterOptions.separateSolids && passengers.isEmpty
-        let solidCount = separateSolids ? await evaluator.components(of: geometry).count : 1
+        // An empty body separates into no solids at all, so it contributes nothing here rather than a
+        // solid 0 that doesn't exist. Kept whole, it gets one pass and is rejected as empty below.
+        let solidIndices: [Int?] = separateSolids
+            ? Array(0 ..< (await evaluator.components(of: geometry).count))
+            : [nil]
         // Drop each solid to z = 0, skipping any that are empty (an empty component has no footprint to
         // lay out and would otherwise produce an empty part).
         // How far each upright solid has to fall to rest on z = 0. Measured rather than applied with
         // `aligned(at: .minZ)` so the drop is part of the transform we can hand back later.
         var drops: [(solidIndex: Int?, drop: Double)] = []
-        for solidIndex in 0 ..< Swift.max(solidCount, 1) {
-            let index: Int? = separateSolids ? solidIndex : nil
+        for index in solidIndices {
             let solid = uprightWhole(index)
             // Skip solids with nothing to lay out. This is not just about genuinely empty components:
             // booleans leave degenerate slivers behind, and separating a body hands each of those out

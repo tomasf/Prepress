@@ -273,6 +273,30 @@ struct PlatterTests {
         }
     }
 
+    @Test func `an empty component is left off the platter`() async throws {
+        // Regression: a component whose body comes out empty (here a rectangle rounded away entirely)
+        // was asked for its first separated solid, which doesn't exist, and the build crashed. Both
+        // the separated and the whole path must just leave it out.
+        let capture = BoundsCapture()
+
+        let platter = Rectangle(x: 14, y: 40).rounded(radius: 7).extruded(height: 5)
+            .inComponent(name: "Vanished")
+            .adding {
+                Rectangle(x: 14, y: 40).rounded(radius: 7).extruded(height: 5)
+                    .inComponent(name: "Vanished whole", platterOptions: .init(separateSolids: false))
+                Box(10).translated(x: 40).inComponent(name: "Kept")
+            }
+            .onPlatter()
+            .evaluating { geometry, evaluator in
+                capture.partNames = Set(await evaluator.parts(of: geometry).keys.map(\.name))
+                return geometry
+            }
+
+        _ = try await ModelFileGenerator.build { platter }
+
+        #expect(capture.partNames == ["Kept"])
+    }
+
     @Test func `solid separation is decided per component`() async throws {
         // The point of moving this onto the component: one component can keep its solids together as a
         // rigid unit while another in the same platter is split apart. As a single option on
